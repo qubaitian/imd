@@ -8,6 +8,25 @@ IPython runs the code.
 
 ## Confirmed design
 
+### Browser links
+
+- On macOS, Cmd + click opens HTTP and HTTPS links in Google Chrome.  
+- Links work in Markdown preview, block editors, Source view, code blocks, and output blocks.  
+- IMD uses macOS automation and needs no browser extension.  
+- macOS can ask for permission to control Chrome on first use.  
+- IMD searches all Chrome windows, including tabs that the user opens manually.  
+- A match uses the protocol, host, and effective port.  
+- Paths, query parameters, and fragments do not affect the match.  
+- An omitted HTTP port means 80.  
+- An omitted HTTPS port means 443.  
+- `localhost` and `127.0.0.1` are separate hosts.  
+- IMD selects the first matching tab in the first matching window, from front to back and left to right.  
+- IMD brings the matching window to the front without changing or reloading its page.  
+- If no tab matches, IMD opens and selects a new tab in the front Chrome window.  
+- If Chrome has no window, IMD creates a window.  
+- An automation failure shows an error in IMD.  
+- Other operating systems and browsers do not support this operation.  
+
 ### Session commands
 
 - The CLI and Python API always expose the same session operation names, arguments, behavior, and information.  

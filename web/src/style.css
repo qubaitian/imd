@@ -837,3 +837,11 @@ main {
     padding: 24px 20px 0;
   }
 }
+.imd-url {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.imd-url:hover {
+  cursor: pointer;
+}

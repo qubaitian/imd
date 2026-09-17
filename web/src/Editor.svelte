@@ -9,6 +9,7 @@
   import { shell } from "@codemirror/legacy-modes/mode/shell";
   import { acceptCompletion, autocompletion } from "@codemirror/autocomplete";
   import { kernelCompletion } from "./completion.js";
+  import { editorLinks } from "./links.js";
 
   let {
     value = "",
@@ -40,6 +41,7 @@
         extensions: [
           basicSetup,
           syntax,
+          editorLinks,
           autocompletion({
             override: [kernelCompletion(onComplete, completionMode)],
             interactionDelay: 0,

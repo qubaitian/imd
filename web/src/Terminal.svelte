@@ -2,8 +2,9 @@
   import { onMount } from "svelte";
   import { Terminal } from "@xterm/xterm";
   import "@xterm/xterm/css/xterm.css";
+  import { terminalLinks } from "./links.js";
 
-  let { prefix = "", data = "", disabled = false, onData } = $props();
+  let { prefix = "", data = "", disabled = false, onData, onOpenUrl } = $props();
   let host;
   let terminal = $state.raw(null);
   let written = "";
@@ -27,6 +28,11 @@
       },
     });
     instance.open(host);
+    instance.registerLinkProvider({
+      provideLinks(line, callback) {
+        callback(terminalLinks(instance, line, onOpenUrl));
+      },
+    });
     instance.textarea.setAttribute("aria-label", "Terminal input");
     const subscription = instance.onData((value) => {
       if (!disabled) onData(value);

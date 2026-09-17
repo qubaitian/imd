@@ -2,13 +2,13 @@
   import { onMount, tick } from "svelte";
   import MarkdownIt from "markdown-it";
   import taskLists from "markdown-it-task-lists";
-  import DOMPurify from "dompurify";
   import hljs from "highlight.js/lib/core";
   import python from "highlight.js/lib/languages/python";
   import bash from "highlight.js/lib/languages/bash";
   import Editor from "./Editor.svelte";
   import Terminal from "./Terminal.svelte";
   import { editBlock, blockAtCursor, deleteBlock } from "./document.js";
+  import { browserLinks, linkedHtml, linkedText } from "./links.js";
 
   hljs.registerLanguage("python", python);
   hljs.registerLanguage("bash", bash);
@@ -46,6 +46,7 @@
   let sendingInput = $state(false);
   let stopping = $state(false);
   let controlError = $state("");
+  let linkError = $state("");
   let cursor = 0;
   let queue = Promise.resolve();
   let suppressBlur = false;
@@ -58,10 +59,10 @@
   });
 
   function render(raw) {
-    return DOMPurify.sanitize(markdown.render(raw, { ...markdownEnvironment }));
+    return linkedHtml(markdown.render(raw, { ...markdownEnvironment }));
   }
   function highlight(code, language) {
-    return DOMPurify.sanitize(
+    return linkedHtml(
       hljs.highlight(code, {
         language: ["python", "py"].includes(language) ? "python" : "bash",
       }).value,
@@ -136,6 +137,15 @@
   }
   function complete(request, signal) {
     return api("complete", "POST", request, null, signal);
+  }
+  async function openUrl(url) {
+    linkError = "";
+    try {
+      await save();
+      await api("browser/open", "POST", { url });
+    } catch (failure) {
+      linkError = failure.message;
+    }
   }
   function enqueue(action) {
     queue = queue.then(action);
@@ -453,10 +463,11 @@
           data={terminalOutput?.data || ""}
           disabled={stopping}
           onData={sendTerminalInput}
+          onOpenUrl={openUrl}
         />
       {/key}
     {:else}
-      <pre class="output-body">{liveOutput || "(waiting for output)"}</pre>
+      <pre class="output-body">{@html linkedText(liveOutput || "(waiting for output)")}</pre>
     {/if}
     {#if inputRequest && !inputRequest.terminal}
       <form class="command-input" onsubmit={sendInput}>
@@ -537,7 +548,9 @@
             >{/if}
         </div>{/if}
 
-      <div class="document-scroll">
+      {#if linkError}<div class="error-banner" role="alert">{linkError}</div>{/if}
+
+      <div class="document-scroll" use:browserLinks={openUrl}>
         {#if doc}
           {#if mode === "source"}
             <section class="source-panel">
@@ -662,7 +675,7 @@
                         disabled={running >= 0}>{@render trashIcon()}Del</button
                       >
                     </div>
-                    <pre class="output-body">{block.code || "(no output)"}</pre>
+                    <pre class="output-body">{@html linkedText(block.code || "(no output)")}</pre>
                   {:else if active === index}
                     <div class="markdown-edit">
                       <div class="edit-label">

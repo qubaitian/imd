@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from . import browser
 from .document import Document, blocks, with_output
 from .kernel import Kernel
 
@@ -41,6 +42,10 @@ class CompleteRequest(BaseModel):
     cursor: int
 
 
+class BrowserRequest(BaseModel):
+    url: str
+
+
 def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> FastAPI:
     document = Document.open(filename, cwd)
     kernel = Kernel(cwd)
@@ -68,6 +73,15 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
 
     def save(source, revision):
         return document.save(source, revision)
+
+    @app.post("/api/browser/open", dependencies=[Depends(authorize)])
+    def open_browser(request: BrowserRequest):
+        try:
+            return browser.open_url(request.url)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
 
     @app.get("/api/document", dependencies=[Depends(authorize)])
     def read_document(response: Response):

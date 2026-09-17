@@ -25,6 +25,9 @@ dev = [
 [project.scripts]
 imd = "imd.cli:main"
 
+[tool.hatch.build]
+artifacts = ["imd/static/**"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["imd"]
 
