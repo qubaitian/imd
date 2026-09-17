@@ -122,7 +122,7 @@ IPython runs the code.
 ### Execute
 
 - `Shift + Enter` runs. `Enter` adds a line.  
-- Every fenced code block can run, except `out`.  
+- Every fenced code block can run, including `out`.  
 - Language tags stay as written. An empty tag is allowed.  
 - IMD does not use the language tag to decide if a block can run.  
 - The user decides whether to run a block.  
@@ -132,26 +132,45 @@ IPython runs the code.
 - `cd` or `%cd` changes the working directory.  
 - `env NAME=value` or `%env NAME=value` sets an environment variable.  
 - `!command` runs an ordinary system command.  
-- Text results go into the adjacent `out` block.  
-- A later run replaces that `out` block.  
+- Text results go into the adjacent Markdown output region.  
+- A later run replaces that output region and all its nested content.  
 - Parsed block kinds are `markdown`, `code`, and `output`.  
+
+### Markdown output
+
+- Each output region starts with `<!-- imd:output:begin ID -->`.  
+- Each output region ends with `<!-- imd:output:end ID -->`.  
+- Each marker occupies its own line.  
+- Each generated output region has a unique ID.  
+- Both markers use the same ID.  
+- Markers stay hidden in Markdown preview.  
+- Output renders as Markdown after execution ends.  
+- During execution, output uses the existing terminal display and input controls.  
+- Code blocks inside output support editing and execution.  
+- Each execution inserts a marked output region after its code block.  
+- Output from a code block inside output stays inside the parent output region.  
+- A repeat execution replaces the adjacent output region and all its nested content.  
+- Output deletion removes both markers and all content between them.  
+- Code deletion removes the code block and its adjacent output region.  
+- The `out` language tag has no special meaning.  
+- IMD does not read or convert old `out` fences as output.  
 
 ### Delete blocks
 
 - Each code block has a `Del` button beside `Run`.  
-- Each `out` block has a `Del` button in its header.  
+- Each output region has a `Del` button in its header.  
 - Each `Del` button shows a small trash icon next to the `Del` text.  
-- `Del` removes the complete `out` block.  
-- `Del` on a code block removes that block and its adjacent `out` block.  
+- `Del` removes the complete output region.  
+- `Del` on a code block removes that block and its adjacent output region.  
 - All `Del` buttons in a document stay disabled while that document runs code.  
 - Each deletion saves immediately.  
 - Deletion does not open a confirmation dialog.  
 
 ### Live command output and input
 
-- The adjacent `out` block shows output during execution.  
+- The adjacent output region shows output during execution.  
 - Progress updates replace text at the cursor position.  
-- `!command` accepts each key directly in the `out` terminal.  
+- `!command` accepts each key directly in the live output terminal.  
 - Space selects an item in a command menu.  
 - Arrow keys move through a command menu.  
 - Enter confirms a command menu selection.  
@@ -236,7 +255,7 @@ The editor saves when it loses focus.
 A switch of the browser window or tab also triggers a save.  
 `Ctrl + S` or `Cmd + S` triggers a save in the editor.  
 
-Every fenced code block can run, except `out`.  
+Every fenced code block can run, including `out`.  
 Language tags stay as written. An empty tag is allowed.  
 IMD does not use the language tag to decide if a block can run.  
 The user decides whether to run a block.  
@@ -256,9 +275,11 @@ value = 40
 value + 2
 ```
 
-```out
+<!-- imd:output:begin a1b2c3 -->
+
 42
-```
+
+<!-- imd:output:end a1b2c3 -->
 
 ```shell
 cd /tmp
@@ -268,11 +289,10 @@ env IMD_MESSAGE=hello
 ````
 
 The output includes standard output, standard error, and the text result of an expression.  
-The text of an exception also shows in the `out` block.  
-A later execution replaces the adjacent `out` block.  
+The text of an exception also shows in the output region.  
+A later execution replaces the adjacent output region.  
 Content in other positions stays the same.  
-If the output contains backticks, IMD increases the fence length.  
-Click the `out` terminal to send keys directly to a command.  
+Click the live output terminal to send keys directly to a command.  
 Use Space, arrow keys, and Enter as the command menu specifies.  
 Python `input()` shows a separate input field.  
 Type a response in that field and press Enter to submit the line.  

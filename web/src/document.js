@@ -28,13 +28,19 @@ export function blockAtCursor(blocks, cursor) {
   );
 }
 
+export function adjacentOutput(source, blocks, index) {
+  const block = blocks[index];
+  const following = blocks[index + 1];
+  return block?.kind === "code" && following?.kind === "output"
+    && block.parent === following.parent
+    && !source.slice(block.end, following.start).trim()
+    ? following
+    : null;
+}
+
 export function deleteBlock(source, blocks, index) {
   const block = blocks[index];
   if (!block || !["code", "output"].includes(block.kind)) return source;
-  const following = blocks[index + 1];
-  const end = block.kind === "code" && following?.kind === "output"
-    && !source.slice(block.end, following.start).trim()
-    ? following.end
-    : block.end;
+  const end = adjacentOutput(source, blocks, index)?.end ?? block.end;
   return source.slice(0, block.start) + source.slice(end);
 }

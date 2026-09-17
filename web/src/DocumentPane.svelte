@@ -7,7 +7,7 @@
   import bash from "highlight.js/lib/languages/bash";
   import Editor from "./Editor.svelte";
   import Terminal from "./Terminal.svelte";
-  import { editBlock, blockAtCursor, deleteBlock } from "./document.js";
+  import { editBlock, blockAtCursor, deleteBlock, adjacentOutput } from "./document.js";
   import { followLinks, linkedHtml, linkedText } from "./links.js";
 
   hljs.registerLanguage("python", python);
@@ -58,6 +58,18 @@
     markdown.parse(doc?.source || "", environment);
     return environment;
   });
+
+  const blockChildren = $derived.by(() => {
+    const children = new Map();
+    for (const [index, block] of (doc?.blocks || []).entries()) {
+      if (!children.has(block.parent)) children.set(block.parent, []);
+      children.get(block.parent).push({ block, index });
+    }
+    return children;
+  });
+  const replacedOutput = $derived(
+    running >= 0 ? adjacentOutput(doc.source, doc.blocks, running) : null,
+  );
 
   function render(raw) {
     return linkedHtml(markdown.render(raw, { ...markdownEnvironment }));
@@ -492,6 +504,124 @@
   </section>
 {/snippet}
 
+{#snippet documentBlocks(parent)}
+  {#each blockChildren.get(parent) || [] as { block, index } (index)}
+    <section
+      hidden={block === replacedOutput}
+      id={`${paneId}-block-${block.start}`}
+      class="notebook-block"
+      class:active={active === index}
+      class:code-block={block.kind === "code"}
+      class:output-block={block.kind === "output"}
+    >
+      {#if block.kind === "code"}
+        <div class="code-header">
+          <div>
+            <span class="code-symbol"
+              >{block.language === "python" ||
+              block.language === "py"
+                ? "{ }"
+                : ">_"}</span
+            ><span>{block.language || "text"}</span>
+          </div>
+          <div>
+            <button
+              class="run-button"
+              aria-label="Run current block"
+              title="Run current block · Shift + Enter"
+              onpointerdown={keepFocus}
+              onclick={() => run(index)}
+              disabled={running >= 0}
+              ><span class:spinner={running === index}
+                >{running === index ? "" : "▷"}</span
+              >{running === index ? "Running" : "Run"}</button
+            >
+            <button
+              class="run-button delete-button"
+              aria-label="Delete code block"
+              title="Delete code block and its output"
+              onpointerdown={keepFocus}
+              onclick={() => removeBlock(index)}
+              disabled={running >= 0}>{@render trashIcon()}Del</button
+            >
+          </div>
+        </div>
+        {#if active === index}<Editor
+            value={draft}
+            language={block.language}
+            onComplete={complete}
+            completionMode="code"
+            onChange={changed}
+            onRun={() => run(index)}
+            onBlur={save}
+            readonly={running >= 0}
+          />{:else}<div
+            class="code-preview"
+            role="button"
+            tabindex="0"
+            aria-label={`Edit the ${block.language || "text"} code block`}
+            onclick={() => activate(block, index)}
+            onkeydown={(event) => blockKey(event, block, index)}
+          >
+            <pre><code
+                >{@html highlight(
+                  block.code,
+                  block.language,
+                )}</code
+              ></pre>
+          </div>{/if}
+      {:else if block.kind === "output"}
+        <div class="output-label">
+          <span>↳</span> OUT<span class="output-caption">output</span>
+          <button
+            class="run-button delete-button"
+            aria-label="Delete output block"
+            title="Delete output block"
+            onpointerdown={keepFocus}
+            onclick={() => removeBlock(index)}
+            disabled={running >= 0}>{@render trashIcon()}Del</button
+          >
+        </div>
+        <div class="output-body markdown-output">
+          {#if blockChildren.has(index)}
+            {@render documentBlocks(index)}
+          {:else}
+            <span>(no output)</span>
+          {/if}
+        </div>
+      {:else if active === index}
+        <div class="markdown-edit">
+          <div class="edit-label">
+            MARKDOWN <span>Saves on blur</span>
+          </div>
+          <Editor
+            value={draft}
+            language="markdown"
+            onChange={changed}
+            onRun={() => save()}
+            onBlur={save}
+            readonly={running >= 0}
+          />
+        </div>
+      {:else}
+        <div
+          class={block.parent === null ? "prose-block" : "output-prose"}
+          role="button"
+          tabindex="0"
+          aria-label="Edit Markdown block"
+          onclick={(event) => {
+            if (!event.target.closest("a")) activate(block, index);
+          }}
+          onkeydown={(event) => blockKey(event, block, index)}
+        >
+          {@html render(block.raw)}
+        </div>
+      {/if}
+    </section>
+    {#if running === index}{@render executionOutput()}{/if}
+  {/each}
+{/snippet}
+
 <div class="app-shell" bind:this={pane}>
   <header class="topbar">
     <div class="brand" aria-label="IMD">
@@ -603,115 +733,7 @@
             </section>
           {:else}
             <article class="notebook markdown-body">
-              {#each doc.blocks as block, index (index)}
-                <section
-                  hidden={running >= 0 && index === running + 1 && block.kind === "output"}
-                  id={`${paneId}-block-${block.start}`}
-                  class="notebook-block"
-                  class:active={active === index}
-                  class:code-block={block.kind === "code"}
-                  class:output-block={block.kind === "output"}
-                >
-                  {#if block.kind === "code"}
-                    <div class="code-header">
-                      <div>
-                        <span class="code-symbol"
-                          >{block.language === "python" ||
-                          block.language === "py"
-                            ? "{ }"
-                            : ">_"}</span
-                        ><span>{block.language || "text"}</span>
-                      </div>
-                      <div>
-                        <button
-                          class="run-button"
-                          aria-label="Run current block"
-                          title="Run current block · Shift + Enter"
-                          onpointerdown={keepFocus}
-                          onclick={() => run(index)}
-                          disabled={running >= 0}
-                          ><span class:spinner={running === index}
-                            >{running === index ? "" : "▷"}</span
-                          >{running === index ? "Running" : "Run"}</button
-                        >
-                        <button
-                          class="run-button delete-button"
-                          aria-label="Delete code block"
-                          title="Delete code block and its output"
-                          onpointerdown={keepFocus}
-                          onclick={() => removeBlock(index)}
-                          disabled={running >= 0}>{@render trashIcon()}Del</button
-                        >
-                      </div>
-                    </div>
-                    {#if active === index}<Editor
-                        value={draft}
-                        language={block.language}
-                        onComplete={complete}
-                        completionMode="code"
-                        onChange={changed}
-                        onRun={() => run(index)}
-                        onBlur={save}
-                        readonly={running >= 0}
-                      />{:else}<div
-                        class="code-preview"
-                        role="button"
-                        tabindex="0"
-                        aria-label={`Edit the ${block.language || "text"} code block`}
-                        onclick={() => activate(block, index)}
-                        onkeydown={(event) => blockKey(event, block, index)}
-                      >
-                        <pre><code
-                            >{@html highlight(
-                              block.code,
-                              block.language,
-                            )}</code
-                          ></pre>
-                      </div>{/if}
-                  {:else if block.kind === "output"}
-                    <div class="output-label">
-                      <span>↳</span> OUT<span class="output-caption">output</span>
-                      <button
-                        class="run-button delete-button"
-                        aria-label="Delete output block"
-                        title="Delete output block"
-                        onpointerdown={keepFocus}
-                        onclick={() => removeBlock(index)}
-                        disabled={running >= 0}>{@render trashIcon()}Del</button
-                      >
-                    </div>
-                    <pre class="output-body">{@html linkedText(block.code || "(no output)")}</pre>
-                  {:else if active === index}
-                    <div class="markdown-edit">
-                      <div class="edit-label">
-                        MARKDOWN <span>Saves on blur</span>
-                      </div>
-                      <Editor
-                        value={draft}
-                        language="markdown"
-                        onChange={changed}
-                        onRun={() => save()}
-                        onBlur={save}
-                        readonly={running >= 0}
-                      />
-                    </div>
-                  {:else}
-                    <div
-                      class="prose-block"
-                      role="button"
-                      tabindex="0"
-                      aria-label="Edit Markdown block"
-                      onclick={(event) => {
-                        if (!event.target.closest("a")) activate(block, index);
-                      }}
-                      onkeydown={(event) => blockKey(event, block, index)}
-                    >
-                      {@html render(block.raw)}
-                    </div>
-                  {/if}
-                </section>
-                {#if running === index}{@render executionOutput()}{/if}
-              {/each}
+              {@render documentBlocks(null)}
             </article>
             <div class="append-row">
               <span></span><button

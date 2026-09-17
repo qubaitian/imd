@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 const headers = { Authorization: "Bearer browser-test" };
 const path = "./notes.md";
-const source = `# Paths\n\nOpen [notes](${path}) or ${path}.\n\n\`\`\`python\nfile = "${path}"\n\`\`\`\n\n\`\`\`out\n('${path}',)\n\`\`\`\n`;
+const source = `# Paths\n\nOpen [notes](${path}) or ${path}.\n\n\`\`\`python\nfile = "${path}"\n\`\`\`\n\n<!-- imd:output:begin fixture -->\n\n('${path}',)\n\n<!-- imd:output:end fixture -->\n`;
 
 test.beforeEach(async ({ page, request }) => {
   const current = await (await request.get("/api/document", { headers })).json();
@@ -80,12 +80,12 @@ test("path detection preserves HTTP links and supports quoted spaces", async ({ 
   const current = await (await request.get("/api/document", { headers })).json();
   const paths = ["/Users/example/项目/file.md", "../other", "web/src/App.svelte", "README.md", "./my folder/a.md"];
   await request.put("/api/document", { headers, data: {
-    source: `\`\`\`out\n${paths.map(value => `'${value}'`).join("\n")}\nhttp://localhost:8123/a.md\nwww.example.com\nplain words\n\`\`\`\n`,
+    source: `<!-- imd:output:begin fixture -->\n\n${paths.map(value => `'${value}'`).join("\n")}\nhttp://localhost:8123/a.md\nwww.example.com\nplain words\n\n<!-- imd:output:end fixture -->\n`,
     revision: current.revision,
   } });
   await page.reload();
   await expect(page.locator(".output-body [data-imd-path]")).toHaveText(paths);
-  await expect(page.locator(".output-body [data-imd-url]")).toHaveText("http://localhost:8123/a.md");
+  await expect(page.locator(".output-body :is(a[href], [data-imd-url])")).toHaveText("http://localhost:8123/a.md");
 });
 
 test("Markdown panels save edits and open further paths", async ({ page, request }) => {

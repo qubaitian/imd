@@ -7,6 +7,7 @@ import uvicorn
 from fastapi.testclient import TestClient
 
 from imd.app import create_app
+from imd.document import blocks
 from imd.kernel import Kernel
 
 
@@ -43,7 +44,14 @@ def test_read_save_execute_document(tmp_path):
         )
         assert response.status_code == 200
         result = response.json()["source"]
-        assert result == source + "\n```out\n2\n```\n"
+        assert result.startswith(source + "\n<!-- imd:output:begin ")
+        assert [item["kind"] for item in blocks(result)] == [
+            "markdown",
+            "code",
+            "output",
+            "markdown",
+        ]
+        assert blocks(result)[-1]["raw"] == "2\n"
         assert path.read_text(encoding="utf-8") == result
 
 
@@ -68,9 +76,9 @@ def test_interrupt_stops_a_flooding_shell_command(tmp_path):
                 result.append(
                     kernel.execute(
                         f"!python {script}",
-                        lambda event: started.set()
-                        if event.get("type") == "output"
-                        else None,
+                        lambda event: (
+                            started.set() if event.get("type") == "output" else None
+                        ),
                     )
                 )
             except Exception as exc:

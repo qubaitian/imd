@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 const headers = { Authorization: "Bearer browser-test" };
 const url = "http://localhost:8123/a?x=1#part";
-const source = `# Links\n\nVisit [the page](${url}) or ${url}.\n\n\`\`\`python\naddress = "${url}"\n\`\`\`\n\n\`\`\`out\n('${url}', '/tmp/test')\n\`\`\`\n`;
+const source = `# Links\n\nVisit [the page](${url}) or ${url}.\n\n\`\`\`python\naddress = "${url}"\n\`\`\`\n\n<!-- imd:output:begin fixture -->\n\n('${url}', '/tmp/test')\n\n<!-- imd:output:end fixture -->\n`;
 
 test.beforeEach(async ({ page, request }) => {
   const current = await (await request.get("/api/document", { headers })).json();
@@ -21,7 +21,7 @@ for (const location of ["preview", "markdown editor", "code preview", "code edit
     let target;
     if (location === "preview") target = page.getByRole("link", { name: "the page" });
     if (location === "code preview") target = page.locator(".code-preview [data-imd-url]");
-    if (location === "output") target = page.locator(".output-body [data-imd-url]");
+    if (location === "output") target = page.locator(".output-body :is(a[href], [data-imd-url])");
     if (location === "markdown editor") {
       await page.locator(".prose-block").filter({ hasText: "Visit" }).click({ position: { x: 4, y: 4 } });
       target = page.locator(".markdown-edit [data-imd-url]").first();
@@ -68,12 +68,14 @@ test("bare hostnames and filenames are not links", async ({ page, request }) => 
       `files = "AGENTS.md app.py www.example.com ${targetUrl}"`,
       "```",
       "",
-      "```out",
+      "<!-- imd:output:begin fixture -->",
+      "",
       "AGENTS.md",
       "app.py",
       "www.example.com",
       targetUrl,
-      "```",
+      "",
+      "<!-- imd:output:end fixture -->",
       "",
     ].join("\n"),
     revision: current.revision,
@@ -87,7 +89,7 @@ test("bare hostnames and filenames are not links", async ({ page, request }) => 
     || await previewLinks.getAttribute("data-imd-url")
   ).toBe(targetUrl);
   await expect(page.locator(".code-preview [data-imd-url]")).toHaveText(targetUrl);
-  await expect(page.locator(".output-body [data-imd-url]")).toHaveText(targetUrl);
+  await expect(page.locator(".output-body :is(a[href], [data-imd-url])")).toHaveText(targetUrl);
 });
 
 test("code links stay complete across syntax colors", async ({ page, request }) => {

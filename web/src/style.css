@@ -858,3 +858,15 @@ main {
   font-size: 12px;
   white-space: nowrap;
 }
+
+.markdown-body .markdown-output {
+  white-space: normal;
+  font-size: inherit;
+  color: inherit;
+}
+.output-prose {
+  cursor: text;
+}
+.markdown-output > .notebook-block:last-child {
+  margin-bottom: 0;
+}

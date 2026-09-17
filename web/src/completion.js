@@ -8,7 +8,7 @@ function codeRegion(source, pos, mode) {
   const offsets = [0];
   for (const line of lines) offsets.push(offsets.at(-1) + line.length + 1);
   for (const token of markdown.parse(source, {})) {
-    if (token.type !== "fence" || token.level !== 0 || token.info.trim().split(/\s+/)[0].toLowerCase() === "out") continue;
+    if (token.type !== "fence" || token.level !== 0) continue;
     const [startLine, endLine] = token.map;
     const from = offsets[startLine + 1];
     const closing = lines[endLine - 1]?.trim() || "";
