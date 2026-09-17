@@ -1,7 +1,5 @@
 import ast
-import io
 import os
-import tokenize
 
 import imd
 
@@ -18,46 +16,30 @@ def load_ipython_extension(shell):
         source = "".join(lines)
         if not shell.automagic or len(lines) < 2:
             return lines
-        rows = set()
-        try:
-            tree = ast.parse(source)
-        except SyntaxError:
-            try:
-                for token in tokenize.generate_tokens(io.StringIO(source).readline):
-                    if token.type == tokenize.NAME:
-                        row, column = token.start
-                        if not lines[row - 1][:column].strip():
-                            rows.add(row - 1)
-            except (tokenize.TokenError, IndentationError):
-                pass
-        else:
-            bindings = {
-                node.id
-                for node in ast.walk(tree)
-                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
-            }
-            bindings.update(
-                node.arg for node in ast.walk(tree) if isinstance(node, ast.arg)
-            )
-            bindings.update(
-                node.asname or node.name.split(".")[0]
-                for node in ast.walk(tree)
-                if isinstance(node, ast.alias)
-            )
-            bindings.update(
-                node.name
-                for node in ast.walk(tree)
-                if isinstance(
-                    node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-                )
-            )
-            rows = {
-                node.lineno - 1
-                for node in ast.walk(tree)
-                if isinstance(node, ast.Expr)
-                and isinstance(node.value, ast.Name)
-                and node.value.id not in bindings
-            }
+        tree = ast.parse(source)
+        bindings = {
+            node.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+        }
+        bindings.update(node.arg for node in ast.walk(tree) if isinstance(node, ast.arg))
+        bindings.update(
+            node.asname or node.name.split(".")[0]
+            for node in ast.walk(tree)
+            if isinstance(node, ast.alias)
+        )
+        bindings.update(
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        )
+        rows = {
+            node.lineno - 1
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Name)
+            and node.value.id not in bindings
+        }
         return [
             shell.prefilter_manager.prefilter_line(
                 line.rstrip("\n"), continue_prompt=True

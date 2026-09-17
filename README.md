@@ -16,8 +16,7 @@ IPython runs the code.
 - Open accepts no file arguments.  
 - Each open creates one empty Markdown file under `/tmp/<current absolute directory>/`.  
 - Open creates missing temporary directories.  
-- The file name uses local time and a 24-hour clock: `yyyy-MM-ddTHH-mm-ss.md`.  
-- If the name exists, open adds `-1`, `-2`, and so on before `.md`.  
+- The file name uses local time, the process id, and a random suffix: `yyyy-MM-ddTHH-mm-ss-<pid>-<random>.md`.  
 - Open never overwrites an existing file.  
 - The operating system can remove files in `/tmp`.  
 - The session stores its absolute start directory as `cwd`.  

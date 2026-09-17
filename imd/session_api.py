@@ -1,6 +1,7 @@
 """Manage document sessions through Python."""
 
 import os
+import secrets
 import select
 import signal
 import subprocess
@@ -34,15 +35,9 @@ def create_temporary_document(cwd: Path) -> Path:
     directory = TEMP_DIR / cwd.relative_to(cwd.anchor)
     directory.mkdir(parents=True, exist_ok=True)
     name = datetime.now().astimezone().strftime("%Y-%m-%dT%H-%M-%S")
-    suffix = 0
-    while True:
-        path = directory / f"{name}{f'-{suffix}' if suffix else ''}.md"
-        try:
-            path.touch(exist_ok=False)
-        except FileExistsError:
-            suffix += 1
-        else:
-            return path
+    path = directory / f"{name}-{os.getpid()}-{secrets.token_hex(4)}.md"
+    path.touch(exist_ok=False)
+    return path
 
 
 def open_session() -> Session:
@@ -57,6 +52,7 @@ def open_session() -> Session:
         text=True,
         start_new_session=True,
     )
+    started = False
     try:
         if not select.select([process.stdout], [], [], 30)[0]:
             raise RuntimeError("imd does not start within 30 seconds.")
@@ -64,18 +60,14 @@ def open_session() -> Session:
         if process.poll() is not None or not line:
             raise RuntimeError("imd does not start.")
         url, saved_cwd, *paths = sessions.parse_entry(line)
+        started = True
         return Session(url, saved_cwd, tuple(paths))
-    except Exception:
-        if process.poll() is None:
-            process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
-        raise
     finally:
         process.stdout.close()
+        if not started:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
 
 
 def list_sessions() -> list[Session]:
@@ -98,7 +90,4 @@ def close_session(port: int) -> None:
     item = sessions.remove_session(port, protected_pid=_owner_pid)
     if item is None:
         raise ValueError("The session does not exist.")
-    try:
-        os.kill(item["pid"], signal.SIGTERM)
-    except ProcessLookupError:
-        pass
+    os.kill(item["pid"], signal.SIGTERM)

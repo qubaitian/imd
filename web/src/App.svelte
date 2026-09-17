@@ -9,26 +9,19 @@
     history.replaceState(null, "", location.pathname + location.search);
 
   let documents = $state([]);
-  let error = $state("");
 
   onMount(async () => {
-    try {
-      const response = await fetch("/api/session", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "The session does not open.");
-      documents = data.documents;
-      document.title = `${documents.map((item) => item.path.split("/").pop()).join(" | ")} · IMD`;
-    } catch (cause) {
-      error = cause.message;
-    }
+    const response = await fetch("/api/session", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "The session does not open.");
+    documents = data.documents;
+    document.title = `${documents.map((item) => item.path.split("/").pop()).join(" | ")} · IMD`;
   });
 </script>
 
-{#if error}
-  <div class="error-banner" role="alert">{error}</div>
-{:else if documents.length}
+{#if documents.length}
   <div class="session-layout" class:split={documents.length === 2}>
     {#each documents as item, index (item.path)}
       <DocumentPane base={item.base} {token} paneId={`document-${index}`} />

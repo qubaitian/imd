@@ -3,7 +3,7 @@ import json
 import secrets
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Queue
 from threading import RLock, Thread
 
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Response
@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .document import Conflict, Document, blocks, with_output
+from .document import Document, blocks, with_output
 from .kernel import Kernel
 
 STATIC = Path(__file__).parent / "static"
@@ -67,12 +67,7 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
             )
 
     def save(source, revision):
-        try:
-            return document.save(source, revision)
-        except Conflict as error:
-            raise HTTPException(
-                409, {"message": str(error), "source": source}
-            ) from error
+        return document.save(source, revision)
 
     @app.get("/api/document", dependencies=[Depends(authorize)])
     def read_document(response: Response):
@@ -163,10 +158,6 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
                 result = with_output(request.source, request.block, output)
                 with lock:
                     return save(result, saved["revision"])
-            except HTTPException:
-                raise
-            except Exception as error:
-                raise HTTPException(500, f"Execution failed: {error}") from error
             finally:
                 with lock:
                     active_run = None
@@ -177,23 +168,22 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
         events = Queue()
 
         def work():
-            try:
-                events.put({"type": "done", "document": finish(events.put)})
-            except HTTPException as error:
-                events.put({"type": "error", "detail": error.detail})
+            events.put({"type": "done", "document": finish(events.put)})
 
         async def stream():
+            worker = Thread(target=work, name="imd-execution", daemon=True)
+            worker.start()
             try:
-                Thread(target=work, name="imd-execution", daemon=True).start()
                 yield json.dumps({"type": "start", "id": run_id}) + "\n"
                 while True:
-                    try:
-                        event = events.get_nowait()
-                    except Empty:
+                    if not events.empty():
+                        event = events.get()
+                        yield json.dumps(event) + "\n"
+                        if event["type"] in {"done", "error"}:
+                            break
+                    elif worker.is_alive():
                         await asyncio.sleep(0.02)
-                        continue
-                    yield json.dumps(event) + "\n"
-                    if event["type"] in {"done", "error"}:
+                    else:
                         break
             finally:
                 with lock:
@@ -211,10 +201,7 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
         with lock:
             if active_run != run_id:
                 raise HTTPException(409, "This execution is no longer active.")
-            try:
-                kernel.input(request.request, request.value)
-            except ValueError as error:
-                raise HTTPException(409, str(error)) from error
+            kernel.input(request.request, request.value)
             return {"ok": True}
 
     @app.post("/api/execute/{run_id}/stop", dependencies=[Depends(authorize)])

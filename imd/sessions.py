@@ -1,6 +1,7 @@
 import ast
 import json
 import os
+import subprocess
 from contextlib import contextmanager
 from fcntl import LOCK_EX, LOCK_UN, flock
 from pathlib import Path
@@ -18,18 +19,15 @@ def format_entry(url: str, cwd: str, paths: list[str] | tuple[str, ...]) -> str:
 
 
 def parse_entry(line: str) -> tuple[str, ...]:
-    try:
-        values = ast.literal_eval(line)
-        if (
-            isinstance(values, tuple)
-            and len(values) >= 2
-            and all(isinstance(item, str) for item in values)
-            and urlsplit(values[0]).scheme == "http"
-            and urlsplit(values[0]).port is not None
-        ):
-            return values
-    except (ValueError, SyntaxError, TypeError):
-        pass
+    values = ast.literal_eval(line)
+    if (
+        isinstance(values, tuple)
+        and len(values) >= 2
+        and all(isinstance(item, str) for item in values)
+        and urlsplit(values[0]).scheme == "http"
+        and urlsplit(values[0]).port is not None
+    ):
+        return values
     raise ValueError(f"Invalid session entry: {line}")
 
 
@@ -40,14 +38,9 @@ def validate_port(port: int) -> int:
 
 
 def is_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    else:
-        return True
+    return (
+        subprocess.run(["kill", "-0", str(pid)], capture_output=True).returncode == 0
+    )
 
 
 @contextmanager

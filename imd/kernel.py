@@ -2,9 +2,9 @@ import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Queue
 from threading import Event, Lock
-from time import monotonic
+from time import monotonic, sleep
 
 from jupyter_client import KernelManager
 
@@ -46,10 +46,10 @@ class Kernel:
         message_id = self.client.complete(code, cursor_pos=cursor)
         deadline = monotonic() + 2
         while (remaining := deadline - monotonic()) > 0:
-            try:
-                message = self.client.get_shell_msg(timeout=remaining)
-            except Empty:
-                return empty
+            if not self.client.shell_channel.msg_ready():
+                sleep(min(0.02, remaining))
+                continue
+            message = self.client.get_shell_msg(timeout=remaining)
             if message["parent_header"].get("msg_id") != message_id:
                 continue
             content = message["content"]
@@ -109,7 +109,7 @@ class Kernel:
                 self.request = None
             self.stopping.clear()
             while not self.inputs.empty():
-                self.inputs.get_nowait()
+                self.inputs.get()
 
     def _execute(self, code, emit, starting=False):
         message_id = self.client.execute(
@@ -123,11 +123,8 @@ class Kernel:
             if self.stopping.is_set() and busy and not starting:
                 self.manager.interrupt_kernel()
                 self.stopping.clear()
-            try:
-                request, value = self.inputs.get_nowait()
-            except Empty:
-                pass
-            else:
+            if not self.inputs.empty():
+                request, value = self.inputs.get()
                 if request["terminal"]:
                     self.client.input(json.dumps({"id": request["id"], "value": value}))
                 else:
@@ -135,13 +132,11 @@ class Kernel:
                     output.feed(("" if request["password"] else value) + "\n")
                     emit({"type": "output", "text": output.text})
                     emit({"type": "input", "id": None})
-            try:
-                if self.client.iopub_channel.msg_ready():
-                    raise Empty
+            if (
+                not self.client.iopub_channel.msg_ready()
+                and self.client.stdin_channel.msg_ready()
+            ):
                 message = self.client.get_stdin_msg(timeout=0)
-            except Empty:
-                pass
-            else:
                 if message["parent_header"].get("msg_id") == message_id:
                     content = message["content"]
                     terminal = message.get("metadata", {}).get("imd_terminal")
@@ -162,12 +157,12 @@ class Kernel:
                             output.feed(request["prompt"])
                             emit({"type": "output", "text": output.text})
                         emit(request)
-            try:
-                message = self.client.get_iopub_msg(timeout=0.02)
-            except Empty:
+            if not self.client.iopub_channel.msg_ready():
                 if not self.manager.is_alive():
                     raise RuntimeError("The IPython session stopped. Start imd again.")
+                sleep(0.02)
                 continue
+            message = self.client.get_iopub_msg(timeout=0.02)
             if message["parent_header"].get("msg_id") != message_id:
                 continue
             kind, content = message["msg_type"], message["content"]

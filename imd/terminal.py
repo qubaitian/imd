@@ -1,7 +1,6 @@
 """Run a shell command with a terminal and direct key input."""
 
 import codecs
-import errno
 import fcntl
 import json
 import os
@@ -60,22 +59,16 @@ def run_shell(shell, command):
         while True:
             readable, _, _ = select.select([master], [], [], 0.02)
             if readable:
-                try:
-                    data = os.read(master, 65536)
-                except OSError as error:
-                    if error.errno != errno.EIO:
-                        raise
-                    data = b""
+                if process.poll() is not None:
+                    break
+                data = os.read(master, 65536)
                 if not data:
                     break
                 publish(decoder.decode(data))
             if kernel.stdin_socket.poll(0):
                 _, reply = kernel.session.recv(kernel.stdin_socket)
                 if reply is not None:
-                    try:
-                        value = json.loads(reply["content"]["value"])
-                    except (ValueError, KeyError):
-                        continue
+                    value = json.loads(reply["content"]["value"])
                     if isinstance(value, dict) and value.get("id") == request_id:
                         data = value["value"].encode("utf-8")
                         while data:
@@ -87,12 +80,7 @@ def run_shell(shell, command):
     finally:
         try:
             if process is not None and process.poll() is None:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except PermissionError:
-                    process.kill()
-                except ProcessLookupError:
-                    pass
+                os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
         finally:
             os.close(master)

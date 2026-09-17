@@ -31,18 +31,14 @@ export function kernelCompletion(request, mode) {
     if (!context.explicit && !/[\p{L}\p{N}_.]$/u.test(prefix)) return null;
     const controller = new AbortController();
     context.addEventListener("abort", () => controller.abort(), { onDocChange: true });
-    try {
-      const result = await request({ code, cursor: [...prefix].length }, controller.signal);
-      if (context.aborted || controller.signal.aborted || !result?.matches?.length) return null;
-      const characters = [...code];
-      if (result.cursor_start < 0 || result.cursor_end < result.cursor_start || result.cursor_end > characters.length) return null;
-      return {
-        from: from + characters.slice(0, result.cursor_start).join("").length,
-        to: from + characters.slice(0, result.cursor_end).join("").length,
-        options: result.matches.map((label) => ({ label })),
-      };
-    } catch {
-      return null;
-    }
+    const result = await request({ code, cursor: [...prefix].length }, controller.signal);
+    if (context.aborted || controller.signal.aborted || !result?.matches?.length) return null;
+    const characters = [...code];
+    if (result.cursor_start < 0 || result.cursor_end < result.cursor_start || result.cursor_end > characters.length) return null;
+    return {
+      from: from + characters.slice(0, result.cursor_start).join("").length,
+      to: from + characters.slice(0, result.cursor_end).join("").length,
+      options: result.matches.map((label) => ({ label })),
+    };
   };
 }

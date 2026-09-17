@@ -74,11 +74,6 @@
       ? editBlock(doc.source, doc.blocks[active], draft)
       : doc.source;
   }
-  function report(cause) {
-    error = cause.message || String(cause);
-    recovery = cause.source || currentSource();
-    status = "Unsaved";
-  }
   async function api(path, method = "GET", body = undefined, onEvent = null, signal = undefined) {
     const response = await fetch(`${base}/api/${path}`, {
       method,
@@ -143,7 +138,7 @@
     return api("complete", "POST", request, null, signal);
   }
   function enqueue(action) {
-    queue = queue.then(action).catch(report);
+    queue = queue.then(action);
     return queue;
   }
   function accept(data, source) {
@@ -221,13 +216,7 @@
       const next = deleteBlock(source, parsed.blocks, target);
       if (next === source) return;
       status = "Saving";
-      let data;
-      try {
-        data = await api("document", "PUT", { source: next, revision: doc.revision });
-      } catch (cause) {
-        cause.source = next;
-        throw cause;
-      }
+      const data = await api("document", "PUT", { source: next, revision: doc.revision });
       suppressBlur = true;
       active = -1;
       draft = "";
@@ -314,17 +303,6 @@
           draft = keepEditor ? data.blocks[index].code : "";
         }
         lastRun = `${((performance.now() - started) / 1000).toFixed(1)} s`;
-      } catch (cause) {
-        if (!cause.source) {
-          try {
-            const disk = await api("document");
-            if (disk.source === source)
-              doc = { ...doc, revision: disk.revision };
-          } catch {
-            /* Keep the browser draft available. */
-          }
-        }
-        throw cause;
       } finally {
         running = -1;
         runId = "";
@@ -347,8 +325,6 @@
         inputValue = "";
         if (!request.terminal) inputRequest = null;
       }
-    } catch (cause) {
-      controlError = cause.message;
     } finally {
       sendingInput = false;
       if (inputRequest?.id === request.id) {
@@ -363,23 +339,14 @@
     const request = inputRequest.id;
     terminalInputQueue = terminalInputQueue.then(async () => {
       if (runId !== execution || inputRequest?.id !== request) return;
-      try {
-        await api(`execute/${execution}/input`, "POST", { request, value });
-      } catch (cause) {
-        if (runId === execution && inputRequest?.id === request) controlError = cause.message;
-      }
+      await api(`execute/${execution}/input`, "POST", { request, value });
     });
   }
   async function stop() {
     if (!runId || stopping) return;
     stopping = true;
     controlError = "";
-    try {
-      await api(`execute/${runId}/stop`, "POST", {});
-    } catch (cause) {
-      controlError = cause.message;
-      stopping = false;
-    }
+    await api(`execute/${runId}/stop`, "POST", {});
   }
   function append(kind) {
     enqueue(async () => {
@@ -440,8 +407,7 @@
         doc = data;
         sourceDraft = data.source;
         status = "Saved";
-      })
-      .catch(report);
+      });
     const blur = () => save();
     const beforeUnload = (event) => {
       if (doc && (currentSource() !== doc.source || running >= 0 || error)) {
