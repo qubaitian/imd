@@ -137,6 +137,7 @@ IPython runs the code.
 - Python `input()` shows an input field only while it waits for a line.  
 - The input field closes after the user submits the line.  
 - A Stop button interrupts execution.  
+- Stop kills the process group of a running command.  
 - The document saves the final displayed text when execution ends.  
 - Full-screen terminal programs are outside this design.  
 
@@ -252,6 +253,7 @@ Use Space, arrow keys, and Enter as the command menu specifies.
 Python `input()` shows a separate input field.  
 Type a response in that field and press Enter to submit the line.  
 Click Stop to interrupt execution.  
+Stop kills a running command process.  
 If the browser disconnects, IMD interrupts execution and saves the final text.  
 Local image paths are relative to the document directory.  
 Local images must stay inside the document directory.  

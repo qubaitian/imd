@@ -1,8 +1,10 @@
 import json
+import os
+import signal
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
 from threading import Event, Lock
 from time import monotonic, sleep
 
@@ -21,6 +23,7 @@ class Kernel:
         self.guard = Lock()
         self.operation = Lock()
         self.request = None
+        self.terminal_pgid = None
         self.stopping = Event()
 
     def execute(self, code: str, emit=None) -> str:
@@ -69,6 +72,22 @@ class Kernel:
 
     def interrupt(self):
         self.stopping.set()
+        if self._kill_terminal():
+            return
+        if self.manager is not None and self.manager.has_kernel:
+            self.manager.interrupt_kernel()
+
+    def _kill_terminal(self):
+        with self.guard:
+            pgid = self.terminal_pgid
+            self.terminal_pgid = None
+        if pgid is None or pgid <= 1:
+            return False
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except OSError:
+            return False
+        return True
 
     def _start(self):
         manager = KernelManager(kernel_name="python3")
@@ -107,6 +126,7 @@ class Kernel:
         finally:
             with self.guard:
                 self.request = None
+                self.terminal_pgid = None
             self.stopping.clear()
             while not self.inputs.empty():
                 self.inputs.get()
@@ -118,11 +138,14 @@ class Kernel:
         output = Output()
         clear_on_next = False
         closed_terminals = set()
-        busy = False
+        halt = None
         while True:
-            if self.stopping.is_set() and busy and not starting:
-                self.manager.interrupt_kernel()
-                self.stopping.clear()
+            if self.stopping.is_set() and not starting:
+                self._kill_terminal()
+                if halt is None:
+                    halt = monotonic()
+                elif monotonic() - halt > 2:
+                    break
             if not self.inputs.empty():
                 request, value = self.inputs.get()
                 if request["terminal"]:
@@ -169,10 +192,15 @@ class Kernel:
             if kind == "status":
                 if content["execution_state"] == "idle":
                     break
-                busy = content["execution_state"] == "busy"
-            if kind == "imd_terminal_end":
+            if kind == "imd_terminal_start":
+                with self.guard:
+                    self.terminal_pgid = content["pid"]
+                if self.stopping.is_set() and not starting:
+                    self._kill_terminal()
+            elif kind == "imd_terminal_end":
                 closed_terminals.add(content["id"])
                 with self.guard:
+                    self.terminal_pgid = None
                     if self.request and self.request["id"] == content["id"]:
                         self.request = None
                         emit({"type": "input", "id": None})
@@ -189,6 +217,8 @@ class Kernel:
                 "error",
                 "imd_terminal_output",
             }:
+                if kind == "imd_terminal_output" and self.stopping.is_set():
+                    continue
                 reset = clear_on_next
                 if clear_on_next:
                     output.clear()
@@ -208,7 +238,14 @@ class Kernel:
                     )
                 emit(event)
         while True:
-            reply = self.client.get_shell_msg(timeout=5)
+            try:
+                reply = self.client.get_shell_msg(
+                    timeout=2 if self.stopping.is_set() else 5
+                )
+            except Empty:
+                if self.stopping.is_set():
+                    break
+                raise
             if reply["parent_header"].get("msg_id") == message_id:
                 break
         return output.text

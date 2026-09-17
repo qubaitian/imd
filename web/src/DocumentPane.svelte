@@ -313,10 +313,14 @@
           draft = keepEditor ? data.blocks[index].code : "";
         }
         lastRun = `${((performance.now() - started) / 1000).toFixed(1)} s`;
+      } catch (failure) {
+        error = failure.message;
       } finally {
         running = -1;
         runId = "";
         inputRequest = null;
+        stopping = false;
+        if (status === "Running") status = "Saved";
       }
     });
   }

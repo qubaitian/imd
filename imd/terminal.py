@@ -49,6 +49,12 @@ def run_shell(shell, command):
         sys.stdout.flush()
         sys.stderr.flush()
         kernel.session.send(
+            kernel.iopub_socket,
+            "imd_terminal_start",
+            {"id": request_id, "pid": process.pid},
+            parent,
+        )
+        kernel.session.send(
             kernel.stdin_socket,
             "input_request",
             {"prompt": "", "password": False},
@@ -61,7 +67,10 @@ def run_shell(shell, command):
             if readable:
                 if process.poll() is not None:
                     break
-                data = os.read(master, 65536)
+                try:
+                    data = os.read(master, 65536)
+                except OSError:
+                    break
                 if not data:
                     break
                 publish(decoder.decode(data))

@@ -3,7 +3,7 @@ import json
 import secrets
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
 from threading import RLock, Thread
 
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Response
@@ -17,6 +17,31 @@ from .document import Document, blocks, with_output
 from .kernel import Kernel
 
 STATIC = Path(__file__).parent / "static"
+
+
+class _LiveEvents:
+    def __init__(self):
+        self._queue = Queue()
+        self._output = None
+        self._lock = RLock()
+
+    def put(self, event):
+        with self._lock:
+            if event.get("type") == "output":
+                self._output = event
+                return
+            self._queue.put(event)
+
+    def take(self):
+        with self._lock:
+            if self._output is not None:
+                event = self._output
+                self._output = None
+                return event
+        try:
+            return self._queue.get_nowait()
+        except Empty:
+            return None
 
 
 class SaveRequest(BaseModel):
@@ -179,10 +204,13 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
         if "application/x-ndjson" not in accept:
             return finish()
 
-        events = Queue()
+        events = _LiveEvents()
 
         def work():
-            events.put({"type": "done", "document": finish(events.put)})
+            try:
+                events.put({"type": "done", "document": finish(events.put)})
+            except Exception as exc:
+                events.put({"type": "error", "detail": str(exc)})
 
         async def stream():
             worker = Thread(target=work, name="imd-execution", daemon=True)
@@ -190,9 +218,10 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
             try:
                 yield json.dumps({"type": "start", "id": run_id}) + "\n"
                 while True:
-                    if not events.empty():
-                        event = events.get()
+                    event = events.take()
+                    if event is not None:
                         yield json.dumps(event) + "\n"
+                        await asyncio.sleep(0)
                         if event["type"] in {"done", "error"}:
                             break
                     elif worker.is_alive():
