@@ -12,8 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from . import browser
-from .document import Document, blocks, with_output
+from . import browser, sessions
+from . import paths as local_paths
+from .document import Conflict, Document, blocks, with_output
 from .kernel import Kernel
 
 STATIC = Path(__file__).parent / "static"
@@ -71,7 +72,13 @@ class BrowserRequest(BaseModel):
     url: str
 
 
-def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> FastAPI:
+class PathRequest(BaseModel):
+    path: str
+
+
+def _document_app(
+    filename: str | None, cwd: Path, token: str, base: str, readonly: bool = False
+) -> FastAPI:
     document = Document.open(filename, cwd)
     kernel = Kernel(cwd)
     lock = RLock()
@@ -97,7 +104,14 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
             )
 
     def save(source, revision):
-        return document.save(source, revision)
+        try:
+            return document.save(source, revision)
+        except Conflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    def require_editable():
+        if readonly:
+            raise HTTPException(403, "This file is read-only.")
 
     @app.post("/api/browser/open", dependencies=[Depends(authorize)])
     def open_browser(request: BrowserRequest):
@@ -111,6 +125,14 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
     @app.get("/api/document", dependencies=[Depends(authorize)])
     def read_document(response: Response):
         with lock:
+            if readonly:
+                return {
+                    "name": document.path.name,
+                    "path": str(document.path),
+                    "source": local_paths.read_text(document.path),
+                    "readonly": True,
+                    "revision": "",
+                }
             response.set_cookie(
                 asset_cookie,
                 session_token,
@@ -151,6 +173,7 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
 
     @app.put("/api/document", dependencies=[Depends(authorize)])
     def save_document(request: SaveRequest):
+        require_editable()
         with lock:
             if active_run is not None:
                 raise HTTPException(409, "Wait for execution to finish before saving.")
@@ -162,6 +185,7 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
 
     @app.post("/api/complete", dependencies=[Depends(authorize)])
     def complete(request: CompleteRequest):
+        require_editable()
         if not 0 <= request.cursor <= len(request.code):
             raise HTTPException(422, "The cursor must be inside the code.")
         with lock:
@@ -176,6 +200,7 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
     @app.post("/api/execute", dependencies=[Depends(authorize)])
     def execute(request: ExecuteRequest, accept: str = Header(default="")):
         nonlocal active_run
+        require_editable()
         with lock:
             if active_run is not None:
                 raise HTTPException(409, "A code block is already running.")
@@ -273,9 +298,10 @@ def _document_app(filename: str | None, cwd: Path, token: str, base: str) -> Fas
 def create_app(
     filename: str | list[str] | None, cwd: Path, token: str | None = None
 ) -> FastAPI:
+    cwd = cwd.resolve()
     filenames = filename if isinstance(filename, list) else [filename]
-    if not 1 <= len(filenames) <= 2:
-        raise ValueError("Give one or two file paths.")
+    if not filenames:
+        raise ValueError("Give at least one file path.")
     paths = [str((cwd / (name or "IMD.md")).resolve()) for name in filenames]
     if len(set(paths)) != len(paths):
         raise ValueError("Give different file paths.")
@@ -293,10 +319,13 @@ def create_app(
         _document_app(item["path"], cwd, session_token, item["base"])
         for item in documents
     ]
+    opened = {item["path"]: item for item in documents}
+    document_lock = asyncio.Lock()
+    stack = AsyncExitStack()
 
     @asynccontextmanager
     async def lifespan(app):
-        async with AsyncExitStack() as stack:
+        async with stack:
             for child in children:
                 await stack.enter_async_context(child.router.lifespan_context(child))
             yield
@@ -307,12 +336,53 @@ def create_app(
         TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"]
     )
 
-    @app.get("/api/session")
-    def read_session(authorization: str = Header(default="")):
+    def authorize(authorization: str = Header(default="")):
         if not secrets.compare_digest(authorization, f"Bearer {session_token}"):
             raise HTTPException(401, "Open the full session URL.")
-        return {"documents": documents}
+
+    @app.get("/api/session", dependencies=[Depends(authorize)])
+    def read_session():
+        return {"documents": documents, "cwd": str(cwd)}
+
+    @app.post("/api/paths/open", dependencies=[Depends(authorize)])
+    async def open_path(request: PathRequest):
+        try:
+            path = await asyncio.to_thread(local_paths.resolve_path, request.path, cwd)
+            if path.is_dir():
+                return await asyncio.to_thread(local_paths.open_directory, path)
+            async with document_lock:
+                item = opened.get(str(path))
+                if item is None:
+                    item = {
+                        "path": str(path),
+                        "base": f"/documents/{len(opened)}",
+                        "readonly": path.suffix.lower() not in {".md", ".markdown"},
+                    }
+                    child = _document_app(
+                        str(path), cwd, session_token, item["base"], item["readonly"]
+                    )
+                    await stack.enter_async_context(
+                        child.router.lifespan_context(child)
+                    )
+                    app.mount(item["base"], child)
+                    route = app.router.routes.pop()
+                    app.router.routes.insert(app.router.routes.index(root_mount), route)
+                    opened[str(path)] = item
+                documents.append(item)
+                await asyncio.to_thread(
+                    sessions.update_paths,
+                    session_token,
+                    [entry["path"] for entry in documents],
+                )
+                return {"document": item}
+        except FileNotFoundError as exc:
+            raise HTTPException(404, "The path does not exist.") from exc
+        except (ValueError, OSError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
 
     for item, child in reversed(list(zip(documents, children))):
         app.mount(item["base"], child)
+    root_mount = app.router.routes[-1]
     return app

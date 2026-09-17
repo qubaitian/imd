@@ -5,7 +5,7 @@ import subprocess
 from contextlib import contextmanager
 from fcntl import LOCK_EX, LOCK_UN, flock
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 SESSIONS_DIR = Path(os.environ.get("IMD_SESSIONS_DIR", Path.home() / ".imd"))
 SESSIONS_FILE = SESSIONS_DIR / "sessions.json"
@@ -38,9 +38,7 @@ def validate_port(port: int) -> int:
 
 
 def is_alive(pid: int) -> bool:
-    return (
-        subprocess.run(["kill", "-0", str(pid)], capture_output=True).returncode == 0
-    )
+    return subprocess.run(["kill", "-0", str(pid)], capture_output=True).returncode == 0
 
 
 @contextmanager
@@ -105,6 +103,17 @@ def remove_by_pid(pid: int) -> None:
 def list_sessions() -> list[dict]:
     with _locked_registry() as handle:
         return _load(handle)
+
+
+def update_paths(token: str, paths: list[str]) -> None:
+    """Keep CLI and Python session information in document order."""
+    with _locked_registry() as handle:
+        entries = _load(handle)
+        for entry in entries:
+            if parse_qs(urlsplit(entry["url"]).fragment).get("token") == [token]:
+                entry["paths"] = paths
+                _write_sessions(handle, entries)
+                return
 
 
 def remove_session(port: int, *, protected_pid: int | None = None) -> dict | None:

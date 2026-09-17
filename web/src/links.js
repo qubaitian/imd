@@ -9,12 +9,41 @@ export function httpLinks(text) {
   return (linkify.match(text) || []).filter(link => /^https?:$/i.test(link.schema));
 }
 
+function isLocalPath(text) {
+  if (!text || /^(?:[a-z][\w+.-]*:|www\.|#|\/\/)/i.test(text)) return false;
+  return /^(?:\/|\.\.?\/)/.test(text)
+    || /^[^\s/]+\/.+/.test(text)
+    || /^[^\s/]+\.[a-z][a-z0-9_-]*$/i.test(text);
+}
+
+function linksIn(text) {
+  const links = httpLinks(text).map(link => ({ ...link, kind: "url" }));
+  const tokens = /(["'`])([^"'`\r\n]+)\1|[^\s<>"'`()\[\]{},;=|\\]+/g;
+  for (const match of text.matchAll(tokens)) {
+    const quoted = Boolean(match[1]);
+    const value = quoted ? match[2] : match[0].replace(/[.!?:。，！：；]+$/, "");
+    const index = match.index + (quoted ? 1 : 0);
+    const lastIndex = index + value.length;
+    if (text[index - 1] === "<" && /^\/?[a-z][\w:-]*$/i.test(value)) continue;
+    if (!isLocalPath(value) || links.some(link => link.index < lastIndex && link.lastIndex > index)) continue;
+    links.push({ index, lastIndex, url: value, kind: "path" });
+  }
+  return links.sort((a, b) => a.index - b.index);
+}
+
+function attributes(link) {
+  return {
+    [`data-imd-${link.kind}`]: link.url,
+    title: link.kind === "url" ? "Cmd + click to open in Chrome" : "Cmd + click to open this path",
+  };
+}
+
 export function linkedHtml(html) {
   const fragment = DOMPurify.sanitize(html, { RETURN_DOM_FRAGMENT: true });
   const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT);
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
-  const links = httpLinks(nodes.map(node =>
+  const links = linksIn(nodes.map(node =>
     node.parentElement?.closest("a") ? " ".repeat(node.textContent.length) : node.textContent,
   ).join(""));
   let offset = 0;
@@ -31,9 +60,8 @@ export function linkedHtml(html) {
       const to = Math.min(text.length, link.lastIndex - start);
       content.append(text.slice(position, from));
       const span = document.createElement("span");
-      span.dataset.imdUrl = link.url;
-      span.className = "imd-url";
-      span.title = "Cmd + click to open in Chrome";
+      for (const [name, value] of Object.entries(attributes(link))) span.setAttribute(name, value);
+      span.className = `imd-${link.kind}`;
       span.textContent = text.slice(from, to);
       content.append(span);
       position = to;
@@ -58,22 +86,27 @@ export const editorLinks = ViewPlugin.fromClass(class {
     if (update.docChanged) this.updateLinks(update.view);
   }
   updateLinks(view) {
-    this.decorations = Decoration.set(httpLinks(view.state.doc.toString()).map(link =>
+    this.decorations = Decoration.set(linksIn(view.state.doc.toString()).map(link =>
       Decoration.mark({
-        class: "imd-url",
-        attributes: { "data-imd-url": link.url, title: "Cmd + click to open in Chrome" },
+        class: `imd-${link.kind}`,
+        attributes: attributes(link),
       }).range(link.index, link.lastIndex),
     ));
   }
 }, { decorations: value => value.decorations });
 
-export function browserLinks(node, open) {
+export function followLinks(node, open) {
   const handle = event => {
     if (!event.metaKey || event.button !== 0) return;
-    const link = event.target.closest?.("[data-imd-url], a[href]");
+    const link = event.target.closest?.("[data-imd-url], [data-imd-path], a[href]");
     if (!link || !node.contains(link)) return;
-    const url = link.dataset.imdUrl || link.getAttribute("href");
-    if (!/^https?:\/\//i.test(url)) return;
+    let url = link.dataset.imdUrl || link.dataset.imdPath || link.getAttribute("href");
+    if (!/^https?:\/\//i.test(url)) {
+      if (!link.dataset.imdPath) {
+        try { url = decodeURIComponent(url); } catch { return; }
+      }
+      if (!isLocalPath(url)) return;
+    }
     event.preventDefault();
     event.stopPropagation();
     if (event.type === "click") open(url);
@@ -102,7 +135,7 @@ export function terminalLinks(terminal, lineNumber, open) {
       for (let i = 0; i < chars.length; i++) cells.push({ x: col + 1, y: row + 1 });
     }
   }
-  return httpLinks(text).map(link => ({
+  return linksIn(text).map(link => ({
     text: link.url,
     range: { start: cells[link.index], end: cells[link.lastIndex - 1] },
     activate(event) {

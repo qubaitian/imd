@@ -4,7 +4,7 @@
   import "@xterm/xterm/css/xterm.css";
   import { terminalLinks } from "./links.js";
 
-  let { prefix = "", data = "", disabled = false, onData, onOpenUrl } = $props();
+  let { prefix = "", data = "", disabled = false, onData, onOpenLink } = $props();
   let host;
   let terminal = $state.raw(null);
   let written = "";
@@ -30,7 +30,7 @@
     instance.open(host);
     instance.registerLinkProvider({
       provideLinks(line, callback) {
-        callback(terminalLinks(instance, line, onOpenUrl));
+        callback(terminalLinks(instance, line, onOpenLink));
       },
     });
     instance.textarea.setAttribute("aria-label", "Terminal input");

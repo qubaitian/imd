@@ -8,7 +8,7 @@
   import Editor from "./Editor.svelte";
   import Terminal from "./Terminal.svelte";
   import { editBlock, blockAtCursor, deleteBlock } from "./document.js";
-  import { browserLinks, linkedHtml, linkedText } from "./links.js";
+  import { followLinks, linkedHtml, linkedText } from "./links.js";
 
   hljs.registerLanguage("python", python);
   hljs.registerLanguage("bash", bash);
@@ -25,7 +25,7 @@
     }
     return renderImage(tokens, index, options, env, renderer);
   };
-  let { base, token, paneId } = $props();
+  let { base, token, paneId, onOpenLink } = $props();
   let pane;
   const inputId = $derived(`command-input-${paneId}`);
 
@@ -139,11 +139,11 @@
   function complete(request, signal) {
     return api("complete", "POST", request, null, signal);
   }
-  async function openUrl(url) {
+  async function openLink(value) {
     linkError = "";
     try {
       await save();
-      await api("browser/open", "POST", { url });
+      await onOpenLink(value);
     } catch (failure) {
       linkError = failure.message;
     }
@@ -468,7 +468,7 @@
           data={terminalOutput?.data || ""}
           disabled={stopping}
           onData={sendTerminalInput}
-          onOpenUrl={openUrl}
+          onOpenLink={openLink}
         />
       {/key}
     {:else}
@@ -555,7 +555,7 @@
 
       {#if linkError}<div class="error-banner" role="alert">{linkError}</div>{/if}
 
-      <div class="document-scroll" use:browserLinks={openUrl}>
+      <div class="document-scroll" use:followLinks={openLink}>
         {#if doc}
           {#if mode === "source"}
             <section class="source-panel">

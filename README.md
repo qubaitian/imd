@@ -29,6 +29,28 @@ IPython runs the code.
 - An automation failure shows an error in IMD.  
 - Other operating systems and browsers do not support this operation.  
 
+### Local path links
+
+- Cmd + click opens absolute paths and relative paths in all browser link locations.  
+- Relative paths use the session start directory, even after a kernel changes its working directory.  
+- Paths can start with `./` or `../`, contain `/`, or name a file such as `README.md`.  
+- A directory name without `/` needs a `./` prefix.  
+- Put paths with spaces inside quotes, backticks, or a Markdown link.  
+- Each file click adds a document panel at the right end of the current page.  
+- All panels have equal width, with no limit on the panel count.  
+- Repeated file clicks also add panels.  
+- Panels for the same file share its document kernel.  
+- Save conflicts keep the file unchanged and show an error.  
+- Markdown files support editing and code execution.  
+- Other UTF-8 text files show read-only text.  
+- Binary files and missing paths show an error.  
+- A directory click selects the most recently created live session with the same resolved start directory.  
+- If no session matches, IMD runs `imd open` in that directory.  
+- Open creates the temporary Markdown file through the existing session operation.  
+- IMD opens the directory session in Chrome through the existing browser operation.  
+- Directory clicks do not add document panels to the current page.  
+- The CLI and Python session operations keep their existing names and arguments.  
+
 ### Session commands
 
 - The CLI and Python API always expose the same session operation names, arguments, behavior, and information.  
