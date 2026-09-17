@@ -12,6 +12,8 @@ IPython runs the code.
 
 - On macOS, Cmd + click opens HTTP and HTTPS links in Google Chrome.  
 - Links work in Markdown preview, block editors, Source view, code blocks, and output blocks.  
+- IMD marks a browser link only when the text starts with `http://` or `https://`.  
+- A name such as `README.md`, `app.py`, or `www.example.com` is not a browser link.  
 - IMD uses macOS automation and needs no browser extension.  
 - macOS can ask for permission to control Chrome on first use.  
 - IMD searches all Chrome windows, including tabs that the user opens manually.  

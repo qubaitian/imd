@@ -15,6 +15,7 @@
   const markdown = new MarkdownIt({ html: false, linkify: true }).use(
     taskLists,
   );
+  markdown.linkify.set({ fuzzyLink: false });
   const renderImage = markdown.renderer.rules.image;
   markdown.renderer.rules.image = (tokens, index, options, env, renderer) => {
     const image = tokens[index];

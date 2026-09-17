@@ -57,6 +57,39 @@ test("ordinary click edits code and automation failure shows an error", async ({
   expect(calls).toBe(1);
 });
 
+test("bare hostnames and filenames are not links", async ({ page, request }) => {
+  const current = await (await request.get("/api/document", { headers })).json();
+  const targetUrl = "http://localhost:8123/a";
+  await request.put("/api/document", { headers, data: {
+    source: [
+      `See AGENTS.md app.py www.example.com ${targetUrl}.`,
+      "",
+      "```python",
+      `files = "AGENTS.md app.py www.example.com ${targetUrl}"`,
+      "```",
+      "",
+      "```out",
+      "AGENTS.md",
+      "app.py",
+      "www.example.com",
+      targetUrl,
+      "```",
+      "",
+    ].join("\n"),
+    revision: current.revision,
+  } });
+  await page.reload();
+  await expect(page.getByText("AGENTS.md").first()).toBeVisible();
+  const previewLinks = page.locator(".prose-block a, .prose-block [data-imd-url]");
+  await expect(previewLinks).toHaveCount(1);
+  await expect.poll(async () =>
+    await previewLinks.getAttribute("href")
+    || await previewLinks.getAttribute("data-imd-url")
+  ).toBe(targetUrl);
+  await expect(page.locator(".code-preview [data-imd-url]")).toHaveText(targetUrl);
+  await expect(page.locator(".output-body [data-imd-url]")).toHaveText(targetUrl);
+});
+
 test("code links stay complete across syntax colors", async ({ page, request }) => {
   const current = await (await request.get("/api/document", { headers })).json();
   const targetUrl = "http://127.0.0.1:8123/path?x=1#part";

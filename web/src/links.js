@@ -3,9 +3,10 @@ import DOMPurify from "dompurify";
 import { Decoration, ViewPlugin } from "@codemirror/view";
 
 const linkify = new MarkdownIt().linkify;
+linkify.set({ fuzzyLink: false });
 
 export function httpLinks(text) {
-  return (linkify.match(text) || []).filter(link => /^https?:\/\//i.test(link.url));
+  return (linkify.match(text) || []).filter(link => /^https?:$/i.test(link.schema));
 }
 
 export function linkedHtml(html) {
