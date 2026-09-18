@@ -332,6 +332,11 @@ uv run imd open
 
 ## Tests
 
+The test suite contains only two basic smoke tests.  
+The backend test reads a document, saves a code block, runs `1 + 1`, and checks the saved result.  
+The browser test opens a document, runs one code block, and checks the displayed result.  
+The test suite keeps the test server and the tools that these tests need.  
+
 ```sh
 uv sync
 uv run pytest -q
@@ -342,8 +347,8 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Backend smoke tests start a real IPython kernel.  
-Browser smoke tests use a temporary document.  
+The backend smoke test starts a real IPython kernel.  
+The browser smoke test uses a temporary document.  
 Playwright starts `tests/browser_server.py` with `.venv/bin/python`.  
 The test server listens on `127.0.0.1:18741` and uses the token `browser-test`.  
 The server removes the temporary directory when it stops.  
