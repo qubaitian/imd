@@ -140,6 +140,25 @@ def test_config_change_requires_closing_existing_sessions(server):
     assert imd.open().url.startswith("https://example.com/")
 
 
+def test_markdown_commands_reach_the_service_and_new_panels(server, tmp_path):
+    client, config_path = server
+    config_path.write_text(config_path.read_text() + 'config["markdown_commands"] = ["printf"]\n')
+    entry = imd.open()
+    prefix = f"/{entry.number}"
+    path = tmp_path / "report.md"
+    path.write_text("# Report\n")
+    opened = client.post(prefix + "/api/paths/open", headers=headers(entry), json={"path": str(path)})
+    assert opened.status_code == 200
+    for base in ["", opened.json()["document"]["base"]]:
+        document = client.get(prefix + base + "/api/document", headers=headers(entry)).json()
+        response = client.post(prefix + base + "/api/execute", headers=headers(entry), json={
+            "source": "```shell\nprintf '# Report\\n'\n```\n",
+            "revision": document["revision"], "block": 0,
+        })
+        assert response.status_code == 200
+        assert response.json()["blocks"][-1]["kind"] == "markdown"
+
+
 def test_busy_port_does_not_fall_back_to_a_random_port(server):
     client, _ = server
     with socket.socket() as listener:
@@ -406,7 +425,7 @@ def test_close_all_closes_caller_last_and_continues_after_errors(
     closed = []
     tokens = []
 
-    def create_app(filename, cwd, token):
+    def create_app(filename, cwd, token, *, markdown_commands):
         tokens.append(token)
 
         @asynccontextmanager

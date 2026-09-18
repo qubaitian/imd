@@ -102,7 +102,7 @@ test("keeps running code connected while the panel moves", async ({ page }) => {
   await expect(a.getByTestId("save-status")).toHaveText("Running");
   await expect(a.getByRole("button", { name: "Stop", exact: true })).toBeEnabled();
   await expect(a.getByTestId("save-status")).toHaveText("Saved", { timeout: 15000 });
-  await expect(a.locator(".output-body")).toHaveText("Finished");
+  await expect(a.locator(".output-body pre code")).toHaveText("Finished");
 });
 
 test("cancels a drag and keeps title bar buttons clickable", async ({ page }) => {

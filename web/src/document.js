@@ -40,7 +40,7 @@ export function adjacentOutput(source, blocks, index) {
 
 export function deleteBlock(source, blocks, index) {
   const block = blocks[index];
-  if (!block || !["code", "output"].includes(block.kind)) return source;
+  if (!block || !["code", "output", "text"].includes(block.kind)) return source;
   const end = adjacentOutput(source, blocks, index)?.end ?? block.end;
   return source.slice(0, block.start) + source.slice(end);
 }

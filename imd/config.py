@@ -1,9 +1,11 @@
 """Read service settings from the current user's configuration file."""
 
 import runpy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
+
+from .output_format import MarkdownCommands
 
 
 @dataclass(frozen=True)
@@ -11,6 +13,7 @@ class Config:
     host: str = "0.0.0.0"
     port: int = 8000
     public_url: str = "http://0.0.0.0:8000"
+    markdown_commands: list[str] = field(default_factory=list)
 
 
 def load_config() -> Config:
@@ -22,7 +25,7 @@ def load_config() -> Config:
         config = runpy.run_path(str(path))["config"]
         if not isinstance(config, dict):
             raise TypeError("Define config as a dictionary.")
-        unknown = config.keys() - {"host", "port", "public_url"}
+        unknown = config.keys() - {"host", "port", "public_url", "markdown_commands"}
         if unknown:
             raise ValueError(f"Unknown settings: {', '.join(sorted(unknown))}.")
         host = config.get("host", "0.0.0.0")
@@ -54,6 +57,8 @@ def load_config() -> Config:
             raise ValueError(
                 "Use an HTTP or HTTPS public URL without a path, query, or token."
             )
-        return Config(host, port, public_url.rstrip("/"))
+        markdown_commands = config.get("markdown_commands", [])
+        MarkdownCommands(markdown_commands)
+        return Config(host, port, public_url.rstrip("/"), markdown_commands)
     except Exception as exc:
         raise ValueError(f"Invalid configuration in {path}: {exc}") from exc

@@ -11,7 +11,7 @@ from imd.app import create_app
 def main():
     with TemporaryDirectory(prefix="imd-browser-test-") as directory:
         root = Path(directory)
-        children = [("", create_app("document.md", root, token="browser-test"))]
+        children = [("", create_app("document.md", root, token="browser-test", markdown_commands=["printf"]))]
         panel_directory = root / "panels"
         panel_directory.mkdir()
         for name in ("a.md", "b.md", "c.md", "notes.txt"):

@@ -8,7 +8,7 @@
   import Editor from "./Editor.svelte";
   import Terminal from "./Terminal.svelte";
   import { editBlock, blockAtCursor, deleteBlock, adjacentOutput } from "./document.js";
-  import { followLinks, linkedHtml } from "./links.js";
+  import { followLinks, linkedHtml, linkedText } from "./links.js";
 
   hljs.registerLanguage("python", python);
   hljs.registerLanguage("bash", bash);
@@ -193,6 +193,7 @@
     status = "Unsaved";
   }
   function activate(block, index) {
+    if (!["markdown", "code"].includes(block.kind)) return;
     if (running >= 0 || active === index) return;
     const delta = currentSource().length - doc.source.length;
     const start =
@@ -205,6 +206,13 @@
       if (selected)
         draft = selected.kind === "markdown" ? selected.raw : selected.code;
     });
+  }
+  async function copyOutput(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      error = "Cannot copy output. Select the text and copy it.";
+    }
   }
   function switchMode(next) {
     if (running >= 0 || next === mode) return;
@@ -440,6 +448,7 @@
       class:active={active === index}
       class:code-block={block.kind === "code"}
       class:output-block={block.kind === "output"}
+      class:text-block={block.kind === "text"}
     >
       {#if block.kind === "code"}
         <div class="code-header">
@@ -492,6 +501,20 @@
                 )}</code
               ></pre>
           </div>{/if}
+      {:else if block.kind === "text"}
+        <div class="output-text-tools">
+          <button class="run-button" aria-label="Copy output" onclick={() => copyOutput(block.code)}>Copy</button>
+          {#if block.parent === null}
+            <button
+              class="run-button delete-button"
+              aria-label="Delete output block"
+              onpointerdown={keepFocus}
+              onclick={() => removeBlock(index)}
+              disabled={running >= 0}>{@render trashIcon()}Del</button
+            >
+          {/if}
+        </div>
+        <pre class="plain-output"><code>{@html linkedText(block.code)}</code></pre>
       {:else if block.kind === "output"}
         <div class="output-label">
           <span>↳</span> OUT<span class="output-caption">output</span>

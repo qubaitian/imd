@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from . import browser, sessions
 from . import paths as local_paths
 from .document import Conflict, Document, blocks, with_output
+from .output_format import MarkdownCommands
 from .shell import Shell, check_language
 
 STATIC = Path(__file__).parent / "static"
@@ -76,7 +77,12 @@ class PanelOrderRequest(BaseModel):
 
 
 def _document_app(
-    filename: str | None, cwd: Path, token: str, base: str, readonly: bool = False
+    filename: str | None,
+    cwd: Path,
+    token: str,
+    base: str,
+    markdown_commands: MarkdownCommands,
+    readonly: bool = False,
 ) -> FastAPI:
     document = Document.open(filename, cwd)
     lock = RLock()
@@ -198,6 +204,9 @@ def _document_app(
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
             saved = save(request.source, request.revision)
+            markdown_output = markdown_commands.matches(
+                items[request.block]["code"], language
+            )
             run_id = secrets.token_urlsafe(24)
             active_run = run_id
 
@@ -205,7 +214,9 @@ def _document_app(
             nonlocal active_run
             try:
                 output = shell.execute(items[request.block]["code"], language, emit)
-                result = with_output(request.source, request.block, output)
+                result = with_output(
+                    request.source, request.block, output, markdown=markdown_output
+                )
                 with lock:
                     return save(result, saved["revision"])
             finally:
@@ -290,8 +301,15 @@ def _document_app(
 
 
 def create_app(
-    filename: str | list[str] | None, cwd: Path, token: str | None = None
+    filename: str | list[str] | None,
+    cwd: Path,
+    token: str | None = None,
+    *,
+    markdown_commands: list[str] | None = None,
 ) -> FastAPI:
+    output_commands = MarkdownCommands(
+        [] if markdown_commands is None else markdown_commands
+    )
     cwd = cwd.resolve()
     filenames = filename if isinstance(filename, list) else [filename]
     if not filenames:
@@ -314,7 +332,7 @@ def create_app(
         for index, path in enumerate(paths)
     ]
     children = [
-        _document_app(item["path"], cwd, session_token, item["base"])
+        _document_app(item["path"], cwd, session_token, item["base"], output_commands)
         for item in documents
     ]
     opened = {item["path"]: item for item in documents}
@@ -372,7 +390,8 @@ def create_app(
                         "readonly": path.suffix.lower() not in {".md", ".markdown"},
                     }
                     child = _document_app(
-                        str(path), cwd, session_token, item["base"], item["readonly"]
+                        str(path), cwd, session_token, item["base"],
+                        output_commands, item["readonly"],
                     )
                     await stack.enter_async_context(
                         child.router.lifespan_context(child)

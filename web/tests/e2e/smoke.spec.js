@@ -12,7 +12,7 @@ test("opens the document and runs one code block", async ({ page, request }) => 
   await page.goto("/#token=browser-test");
   await expect(page.getByRole("heading", { name: "Smoke test" })).toBeVisible();
   await page.getByRole("button", { name: "Run current block" }).click();
-  await expect(page.locator(".output-body")).toHaveText("2");
+  await expect(page.locator(".output-body pre code")).toHaveText("2");
 });
 
 test("keeps session routes and tokens separate on one origin", async ({ page, request }) => {
@@ -32,7 +32,7 @@ test("keeps session routes and tokens separate on one origin", async ({ page, re
   await page.reload();
   await expect(page.getByRole("heading", { name: "Session 1" })).toBeVisible();
   await page.getByRole("button", { name: "Run current block" }).click();
-  await expect(page.locator(".output-body")).toHaveText("3");
+  await expect(page.locator(".output-body pre code")).toHaveText("3");
   await page.goto("/2/");
   await expect(page.getByRole("heading", { name: "Session 2" })).toBeVisible();
   await expect(page.locator(".output-body")).toHaveCount(0);

@@ -226,8 +226,25 @@ During execution, the adjacent output region shows a terminal with 100 columns a
 The terminal sends each key to the PTY without adding a newline.  
 Programs control Space, arrow keys, Enter, and input such as Python `input()`.  
 Progress updates replace text at the cursor position.  
-When execution ends, IMD saves the final text and renders it as Markdown without an exit code.  
+When execution ends, IMD saves the final text without an exit code.  
+By default, IMD wraps the text in an `output` fence.  
+An `output` fence displays plain text and supports copying and links.  
+It has no code editor or Run control.  
+The output region keeps its Del control.  
+Only a matching command saves and renders its output as Markdown without an outer fence.  
+The format applies to the combined standard output and standard error.  
 An empty output region shows `(no output)`.  
+
+The global `markdown_commands` list in `~/.imd/config.py` selects Markdown commands.  
+The list is empty by default.  
+Each entry matches a command prefix by complete arguments.  
+For example, `report show` matches `report show today` but not `report showcase`.  
+IMD matches only a single simple shell command as written.  
+IMD does not expand aliases, variables, or command paths for matching.  
+Add each command spelling that needs Markdown output to the list.  
+Pipelines, multiple commands, and control statements use an `output` fence.  
+Python blocks also use an `output` fence.  
+To select Markdown output from a Python script, run it in a shell block and list its command, such as `python3 report.py`.  
 
 Each output region uses a unique ID in two markers on separate lines:  
 
@@ -240,7 +257,7 @@ Output content
 ```
 
 Preview hides the markers.  
-Code blocks inside output support editing and execution.  
+Code blocks inside Markdown output support editing and execution, except for `output` fences.  
 Their output stays inside the parent output region.  
 Each run replaces the adjacent output region and all its nested content.  
 The `out` tag has no special meaning and does not identify an output region.  
@@ -308,11 +325,13 @@ An invalid file reports its path and an error.
 config = {
     "host": "0.0.0.0",
     "port": 8000,
+    "markdown_commands": [],
 }
 ```
 
 `host` accepts an IPv4 or IPv6 listen address.  
 `port` sets the fixed HTTP port.  
+`markdown_commands` accepts a list of command prefixes, such as `["report show", "python3 report.py"]`.  
 An optional `public_url` sets the printed HTTP or HTTPS origin, with an optional port and no path, query, or token.  
 Without `public_url`, IMD builds an HTTP URL from `host` and `port`.  
 For an HTTPS reverse proxy, use a configuration such as:  

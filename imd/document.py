@@ -82,6 +82,8 @@ def blocks(source: str) -> list[dict]:
                 else ""
             )
             kind = {"fence": "code", "imd_output": "output"}.get(token.type, "markdown")
+            if kind == "code" and language == "output":
+                kind = "text"
             index = len(items)
             items.append(
                 {
@@ -104,7 +106,7 @@ def blocks(source: str) -> list[dict]:
     return items
 
 
-def with_output(source: str, index: int, output: str) -> str:
+def with_output(source: str, index: int, output: str, *, markdown: bool = False) -> str:
     items = blocks(source)
     if index < 0 or index >= len(items) or items[index]["kind"] != "code":
         raise ValueError("Select a code block.")
@@ -115,6 +117,10 @@ def with_output(source: str, index: int, output: str) -> str:
     while identity in source or identity in output:
         identity = uuid4().hex
     body = output if not output or output.endswith("\n") else output + "\n"
+    if body and not markdown:
+        longest = max((len(run) for run in re.findall(r"`+", body)), default=0)
+        fence = "`" * max(3, longest + 1)
+        body = f"{fence}output\n{body}{fence}\n"
     result = (
         f"<!-- imd:output:begin {identity} -->\n\n"
         + body

@@ -67,7 +67,10 @@ class Service:
         counter.write_text(str(number + 1))
         path = create_temporary_document(cwd)
         token = secrets.token_urlsafe(32)
-        app = create_app(str(path), cwd, token=token)
+        app = create_app(
+            str(path), cwd, token=token,
+            markdown_commands=self.config.markdown_commands,
+        )
         context = app.router.lifespan_context(app)
         try:
             await context.__aenter__()
