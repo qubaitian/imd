@@ -201,6 +201,14 @@ Code blocks use IPython syntax.
 - Daily start: `uv tool install .`, then `imd open` from any directory.  
 - A later `uv tool install` of another package with the same entry name replaces `imd`.  
 - The Python package lives in `imd/` at the project root.  
+- `hatch_build.py` is the wheel build hook.  
+- A wheel build runs `npm --prefix web ci` and `npm --prefix web run build`.  
+- `uv tool install .`, `uv build`, and `uv tool install git+...` build a wheel, so they run npm.  
+- Each wheel build rebuilds the frontend. Existing `imd/static` does not skip npm.  
+- `uv sync` uses an editable install and does not run npm.  
+- Missing npm fails the wheel build. The error asks for Node.js 22.12 or later.  
+- `imd/static` stays out of git. The wheel includes these files as hatch artifacts.  
+- Development with `uv run imd open` still needs a frontend build first, or use `uv tool install .`.  
 
 ## Install and start
 
@@ -227,9 +235,11 @@ Use `imd close <port>` to stop one session.
 For daily use from any directory, install the tool once from the project directory.  
 
 ```sh
-npm --prefix web run build
 uv tool install .
 ```
+
+The wheel build runs npm.  
+Node.js 22.12 or later must be available.  
 
 Then start from any directory.  
 
@@ -332,9 +342,10 @@ uv run imd open
 
 ## Tests
 
-The test suite contains only two basic smoke tests.  
+The test suite contains two basic smoke tests and a wheel-hook test.  
 The backend test reads a document, saves a code block, runs `1 + 1`, and checks the saved result.  
 The browser test opens a document, runs one code block, and checks the displayed result.  
+The wheel-hook test checks that a wheel build runs npm and that an editable install skips npm.  
 The test suite keeps the test server and the tools that these tests need.  
 
 ```sh
@@ -356,4 +367,5 @@ The tests do not execute code in user documents.
 
 The frontend build writes to `imd/static`.  
 The Python wheel includes these static files.  
-Build the frontend before you build the wheel.  
+A wheel build runs `npm ci` and `npm run build`.  
+Do not run npm by hand before `uv tool install .` or `uv build`.  
