@@ -24,17 +24,17 @@ def parse_entry(line: str) -> tuple[str, ...]:
         isinstance(values, tuple)
         and len(values) >= 2
         and all(isinstance(item, str) for item in values)
-        and urlsplit(values[0]).scheme == "http"
-        and urlsplit(values[0]).port is not None
+        and urlsplit(values[0]).scheme in {"http", "https"}
+        and urlsplit(values[0]).hostname
     ):
         return values
     raise ValueError(f"Invalid session entry: {line}")
 
 
-def validate_port(port: int) -> int:
-    if type(port) is not int or not 1 <= port <= 65535:
-        raise ValueError("Give a port from 1 through 65535.")
-    return port
+def validate_number(number: int) -> int:
+    if type(number) is not int or number < 1:
+        raise ValueError("Give a positive integer session number.")
+    return number
 
 
 def is_alive(pid: int) -> bool:
@@ -43,7 +43,7 @@ def is_alive(pid: int) -> bool:
 
 @contextmanager
 def _locked_registry():
-    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    SESSIONS_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     with SESSIONS_FILE.open("a+", encoding="utf-8") as handle:
         flock(handle.fileno(), LOCK_EX)
         handle.seek(0)
@@ -80,12 +80,13 @@ def _save(handle, sessions: list[dict]) -> None:
     _write_sessions(handle, _prune(sessions))
 
 
-def add_session(paths: list[str], url: str, pid: int, cwd: Path) -> None:
+def add_session(paths: list[str], url: str, pid: int, cwd: Path, number: int) -> None:
     entry = {
         "paths": [str(Path(path).resolve()) for path in paths],
         "url": url,
         "cwd": str(cwd.resolve()),
         "pid": pid,
+        "number": number,
     }
     with _locked_registry() as handle:
         sessions = _load(handle)
@@ -116,14 +117,12 @@ def update_paths(token: str, paths: list[str]) -> None:
                 return
 
 
-def remove_session(port: int, *, protected_pid: int | None = None) -> dict | None:
-    validate_port(port)
+def remove_session(number: int) -> dict | None:
+    validate_number(number)
     with _locked_registry() as handle:
         sessions = _load(handle)
         for index, item in enumerate(sessions):
-            if urlsplit(item["url"]).port == port:
-                if item["pid"] == protected_pid:
-                    raise ValueError("A kernel cannot close its own session.")
+            if item.get("number") == number:
                 removed = sessions.pop(index)
                 _save(handle, sessions)
                 return removed

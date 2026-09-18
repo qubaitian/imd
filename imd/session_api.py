@@ -2,19 +2,17 @@
 
 import os
 import secrets
-import select
-import signal
-import subprocess
-import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import sessions
+from ._service import request
+from .config import load_config
 
 TEMP_DIR = Path("/tmp")
-_owner_pid: int | None = None
+_owner_token: str | None = None
 
 
 @dataclass(frozen=True)
@@ -26,9 +24,15 @@ class Session:
     paths: tuple[str, ...]
 
     @property
+    def number(self) -> int:
+        """Return the session number from its URL path."""
+        return int(urlsplit(self.url).path.strip("/"))
+
+    @property
     def port(self) -> int:
-        """Return the session port."""
-        return urlsplit(self.url).port
+        """Return the public port of the shared service."""
+        parts = urlsplit(self.url)
+        return parts.port or (443 if parts.scheme == "https" else 80)
 
 
 def create_temporary_document(cwd: Path) -> Path:
@@ -37,57 +41,25 @@ def create_temporary_document(cwd: Path) -> Path:
     name = datetime.now().astimezone().strftime("%Y-%m-%dT%H-%M-%S")
     path = directory / f"{name}-{os.getpid()}-{secrets.token_hex(4)}.md"
     path.touch(exist_ok=False)
-    return path
+    return path.resolve()
+
+
+def _session(item: dict) -> Session:
+    return Session(item["url"], item["cwd"], tuple(item["paths"]))
 
 
 def open_session() -> Session:
     """Create a session with one temporary document in the current directory."""
-    cwd = Path.cwd()
-    path = create_temporary_document(cwd)
-    process = subprocess.Popen(
-        [sys.executable, "-m", "imd._server", str(path)],
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-        start_new_session=True,
-    )
-    started = False
-    try:
-        if not select.select([process.stdout], [], [], 30)[0]:
-            raise RuntimeError("imd does not start within 30 seconds.")
-        line = process.stdout.readline().strip()
-        if process.poll() is not None or not line:
-            raise RuntimeError("imd does not start.")
-        url, saved_cwd, *paths = sessions.parse_entry(line)
-        started = True
-        return Session(url, saved_cwd, tuple(paths))
-    finally:
-        process.stdout.close()
-        if not started:
-            if process.poll() is None:
-                process.kill()
-            process.wait()
+    config = load_config()
+    return _session(request("open", cwd=str(Path.cwd()), config=asdict(config)))
 
 
 def list_sessions() -> list[Session]:
     """Return the live sessions on this computer."""
-    result = []
-    for item in sessions.list_sessions():
-        if "cwd" not in item:
-            port = urlsplit(item["url"]).port
-            raise ValueError(
-                f"Session {port} has no saved start directory. "
-                f"Run imd close {port}, then imd open."
-            )
-        result.append(Session(item["url"], item["cwd"], tuple(item["paths"])))
-    return result
+    return [_session(item) for item in request("list")]
 
 
-def close_session(port: int) -> None:
-    """Stop a session by port and keep its document files."""
-    sessions.validate_port(port)
-    item = sessions.remove_session(port, protected_pid=_owner_pid)
-    if item is None:
-        raise ValueError("The session does not exist.")
-    os.kill(item["pid"], signal.SIGTERM)
+def close_session(number: int) -> None:
+    """Stop one session by number and keep its document files."""
+    sessions.validate_number(number)
+    request("close", number=number, owner_token=_owner_token)

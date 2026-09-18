@@ -14,8 +14,9 @@ from .output import Output
 
 
 class Kernel:
-    def __init__(self, cwd: Path):
+    def __init__(self, cwd: Path, session_token: str = ""):
         self.cwd = cwd
+        self.session_token = session_token
         self.manager = None
         self.client = None
         self.worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="imd-kernel")
@@ -101,6 +102,7 @@ class Kernel:
         self.manager = manager
         manager.start_kernel(
             cwd=str(self.cwd),
+            env={**os.environ, "IMD_SESSION_TOKEN": self.session_token},
             extra_arguments=[
                 "--InteractiveShell.automagic=True",
                 "--InteractiveShell.colors=NoColor",

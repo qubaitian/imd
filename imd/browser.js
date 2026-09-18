@@ -1,24 +1,26 @@
 ObjC.import("Foundation");
 
-function endpoint(url) {
+function endpoint(url, matchPath = false) {
   const parts = $.NSURLComponents.componentsWithString($(url));
   if (!parts) return null;
   const scheme = ObjC.unwrap(parts.scheme)?.toLowerCase();
   const host = ObjC.unwrap(parts.host)?.toLowerCase();
   if (!host || !["http", "https"].includes(scheme)) return null;
   const port = ObjC.unwrap(parts.port) ?? (scheme === "https" ? 443 : 80);
-  return JSON.stringify([scheme, host, port]);
+  const key = [scheme, host, port];
+  if (matchPath) key.push(ObjC.unwrap(parts.path) || "/");
+  return JSON.stringify(key);
 }
 
-function openChrome(url) {
-  const wanted = endpoint(url);
+function openChrome(url, matchPath) {
+  const wanted = endpoint(url, matchPath);
   if (!wanted) throw new Error("Use a complete HTTP or HTTPS URL.");
   const chrome = Application("com.google.Chrome");
   let windows = chrome.windows();
   for (const win of windows) {
     const tabs = win.tabs();
     for (let index = 0; index < tabs.length; index++) {
-      if (endpoint(tabs[index].url()) !== wanted) continue;
+      if (endpoint(tabs[index].url(), matchPath) !== wanted) continue;
       win.activeTabIndex = index + 1;
       win.minimized = false;
       win.index = 1;
@@ -43,5 +45,5 @@ function openChrome(url) {
 }
 
 function run(args) {
-  return JSON.stringify(openChrome(args[0]));
+  return JSON.stringify(openChrome(args[0], args[1] === "path"));
 }

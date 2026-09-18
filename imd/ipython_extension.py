@@ -9,7 +9,7 @@ from .terminal import run_shell
 
 def load_ipython_extension(shell):
     shell.user_ns["imd"] = imd
-    session_api._owner_pid = os.getppid()
+    session_api._owner_token = os.environ.get("IMD_SESSION_TOKEN")
     shell.system = lambda command: run_shell(shell, command)
 
     def multiline_automagic(lines):
@@ -22,7 +22,9 @@ def load_ipython_extension(shell):
             for node in ast.walk(tree)
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
         }
-        bindings.update(node.arg for node in ast.walk(tree) if isinstance(node, ast.arg))
+        bindings.update(
+            node.arg for node in ast.walk(tree) if isinstance(node, ast.arg)
+        )
         bindings.update(
             node.asname or node.name.split(".")[0]
             for node in ast.walk(tree)

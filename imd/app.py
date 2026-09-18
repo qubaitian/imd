@@ -6,7 +6,7 @@ from pathlib import Path
 from queue import Empty, Queue
 from threading import RLock, Thread
 
-from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Response
+from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -79,16 +79,16 @@ def _document_app(
     filename: str | None, cwd: Path, token: str, base: str, readonly: bool = False
 ) -> FastAPI:
     document = Document.open(filename, cwd)
-    kernel = Kernel(cwd)
     lock = RLock()
     active_run = None
     session_token = token or secrets.token_urlsafe(32)
+    kernel = Kernel(cwd, session_token)
     asset_cookie = f"imd-assets-{session_token[:12]}"
 
     @asynccontextmanager
     async def lifespan(app):
         yield
-        kernel.close()
+        await asyncio.to_thread(kernel.close)
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.token = session_token
@@ -119,7 +119,7 @@ def _document_app(
             raise HTTPException(503, str(exc)) from exc
 
     @app.get("/api/document", dependencies=[Depends(authorize)])
-    def read_document(response: Response):
+    def read_document(request: Request, response: Response):
         with lock:
             if readonly:
                 return {
@@ -134,7 +134,7 @@ def _document_app(
                 session_token,
                 httponly=True,
                 samesite="strict",
-                path=f"{base}/api/assets",
+                path=f"{request.scope.get('root_path', '')}/api/assets",
             )
             return document.read()
 

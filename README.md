@@ -48,8 +48,9 @@ IPython runs the code.
 - If no session matches, IMD runs `imd open` in that directory.  
 - Open creates the temporary Markdown file through the existing session operation.  
 - IMD opens the directory session in Chrome through the existing browser operation.  
+- Directory sessions match the URL path as well as the protocol, host, and port.  
 - Directory clicks do not add document panels to the current page.  
-- The CLI and Python session operations keep their existing names and arguments.  
+- The CLI and Python session operations use the same names and arguments.  
 
 ### Session commands
 
@@ -64,9 +65,14 @@ IPython runs the code.
 - The operating system can remove files in `/tmp`.  
 - The session stores its absolute start directory as `cwd`.  
 - This value stays fixed when document code changes a kernel working directory.  
-- Open selects a free port and starts a background service.  
-- The service listens on `0.0.0.0`.  
-- The printed address uses host `0.0.0.0`.  
+- All sessions for one operating system user share one background service and one fixed HTTP port.  
+- The first open starts the service.  
+- The default listen address is `0.0.0.0:8000`.  
+- The default public URL is `http://0.0.0.0:8000`.  
+- Each session URL uses `/<number>/#token=<token>`.  
+- Session numbers increase across service restarts.  
+- Each session keeps its own access token, start directory, documents, and kernels.  
+- A port conflict reports an error instead of selecting another port.  
 - The service accepts any HTTP Host name.  
 - Open returns the shell without opening a browser.  
 - Open prints `(http_address, cwd, file1, file2, ...)`.  
@@ -75,17 +81,19 @@ IPython runs the code.
 - The output includes only the open files and has no empty file fields.  
 - `imd list` prints all live sessions, one session per line.  
 - An empty list prints no text.  
-- `imd close <port>` stops the session at that port and keeps its files.  
-- Close accepts a port from 1 through 65535.  
+- `imd close <number>` stops one session and keeps its files.  
+- Close accepts a positive integer session number from the URL path.  
+- Closing the last session stops the shared service and releases the port.  
 - Close does not accept a file path or URL.  
 - Close prints no text on success and reports an error on failure.  
 - The old command names and formats are not supported.  
 - Session records live in `~/.imd/sessions.json`.  
-- Each record stores the address, start directory, document paths, and process ID.  
+- Each record stores the number, address, start directory, document paths, and shared service process ID.  
 - List and close remove records for processes that no longer run.  
-- A live record from an earlier version has no start directory.  
-- Close that session by port and open a new session before listing sessions.  
-- Background service logs go to `/dev/null`.  
+- Stop sessions from an earlier version before upgrading.  
+- Use the earlier version of `imd close <port>` to stop those sessions.  
+- Background service logs go to `~/.imd/server.log`.  
+- Local session operations use a Unix socket that permits access only by the current user.  
 - Unix and macOS are supported.  
 - `cli.py` handles commands.  
 - `_server.py` runs the service without importing `cli.py`.  
@@ -95,11 +103,14 @@ IPython runs the code.
 - Each kernel imports `imd` at startup.  
 - `imd.open()` returns a `Session` object.  
 - `imd.list()` returns a list of `Session` objects.  
-- `imd.close(port)` stops the specified session, keeps its files, and returns `None`.  
+- `imd.close(number)` stops the specified session, keeps its files, and returns `None`.  
 - `Session.url` is the session address.  
 - `Session.cwd` is the absolute start directory.  
 - `Session.paths` is a tuple of absolute document paths in display order.  
-- `Session.port` is the port from the session address.  
+- `Session.number` is the session number from the URL path.  
+- `Session.port` is the public port from the session address.  
+- An omitted HTTPS port means 443.  
+- An omitted HTTP port means 80.  
 - API calls return data without printing it.  
 - API failures raise exceptions.  
 - A kernel cannot close its own session through the Python API.  
@@ -231,10 +242,10 @@ uv run imd open
 Use `uv sync` before backend tests and browser e2e tests.  
 `imd open` prints the address, start directory, and document paths, then returns the shell.  
 Open the printed URL in the browser.  
-The service listens on `0.0.0.0`.  
-The printed address uses host `0.0.0.0`.  
+The service listens on `0.0.0.0:8000` by default.  
+All sessions share that port.  
 The printed address includes the access credential for the current session.  
-Use `imd close <port>` to stop one session.  
+Use `imd close <number>` to stop one session.  
 
 For daily use from any directory, install the tool once from the project directory.  
 
@@ -250,12 +261,70 @@ Then start from any directory.
 ```sh
 imd open
 imd list
-imd close 12345
+imd close 1
 ```
 
-Use the port from the printed address in the close command.  
+Use the session number from the printed URL path in the close command.  
 Each open creates a separate session with one temporary document.  
 The initial IPython working directory is the start directory.  
+
+### Server configuration
+
+IMD reads `~/.imd/config.py` on each open.  
+The path uses the current user's home directory, independent of the working directory.  
+For `root`, the path is `/root/.imd/config.py`.  
+The file defines a dictionary named `config`.  
+IMD uses this code to read the file:  
+
+```python
+import runpy
+from pathlib import Path
+
+config_path = Path.home() / ".imd" / "config.py"
+config = runpy.run_path(str(config_path))["config"]
+```
+
+The file runs as Python code with the current user's permissions.  
+A missing file uses the default settings.  
+An invalid file reports its path and an error.  
+
+Create `~/.imd/config.py` for a server behind an HTTPS reverse proxy:  
+
+```python
+config = {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "public_url": "https://qubaitian.duckdns.org",
+}
+```
+
+- `host` sets the listen address.  
+- `port` sets the fixed HTTP port.  
+- `public_url` sets the address that IMD prints.  
+- `public_url` accepts an HTTP or HTTPS origin, with an optional port.  
+- The URL must not contain a path, query, or token.  
+- If `public_url` is absent, IMD builds an HTTP URL from `host` and `port`.  
+
+Configure the reverse proxy to send requests for this domain to `http://127.0.0.1:8000`.  
+The reverse proxy preserves each request path, including the session number.  
+The reverse proxy provides the TLS certificate and HTTPS connection.  
+Setting `public_url` does not install or configure a reverse proxy.  
+
+For direct HTTP access, use this configuration:  
+
+```python
+config = {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "public_url": "http://qubaitian.duckdns.org:8000",
+}
+```
+
+Direct access requires the server firewall to permit the configured port.  
+The CLI and Python API use the same configuration.  
+A running service keeps its initial settings.  
+After changing settings, close all sessions, then run `imd open`.  
+List and close remain available if the configuration file contains an error.  
 
 ## Use
 
@@ -330,8 +399,9 @@ session = imd.open()
 session.url
 session.cwd
 session.paths
+session.number
 imd.list()
-imd.close(session.port)
+imd.close(session.number)
 ```
 
 The last call closes the new session and keeps its document.  
@@ -346,7 +416,7 @@ uv run imd open
 
 ## Tests
 
-The test suite contains two basic smoke tests and a wheel-hook test.  
+The test suite checks configuration, shared sessions, document execution, browser behavior, and the wheel build hook.  
 The backend test reads a document, saves a code block, runs `1 + 1`, and checks the saved result.  
 The browser test opens a document, runs one code block, and checks the displayed result.  
 The wheel-hook test checks that a wheel build runs npm and that an editable install skips npm.  

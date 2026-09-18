@@ -60,4 +60,4 @@ def open_directory(path: Path) -> dict:
                     result.stderr.strip() or "The directory session does not start."
                 )
             url, *_ = sessions.parse_entry(result.stdout.strip())
-    return browser.open_url(url)
+    return browser.open_url(url, match_path=True)

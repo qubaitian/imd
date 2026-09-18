@@ -11,8 +11,8 @@ _lock = Lock()
 _script = Path(__file__).with_name("browser.js")
 
 
-def open_url(url: str) -> dict[str, str]:
-    """Select a tab with the same protocol, host, and port, or open a tab."""
+def open_url(url: str, *, match_path: bool = False) -> dict[str, str]:
+    """Select a matching tab or open a tab."""
     try:
         parts = urlsplit(url)
         valid = (
@@ -31,7 +31,14 @@ def open_url(url: str) -> dict[str, str]:
     with _lock:
         try:
             result = subprocess.run(
-                ["osascript", "-l", "JavaScript", str(_script), url],
+                [
+                    "osascript",
+                    "-l",
+                    "JavaScript",
+                    str(_script),
+                    url,
+                    "path" if match_path else "origin",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=30,

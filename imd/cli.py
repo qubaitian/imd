@@ -11,15 +11,18 @@ def main() -> None:
     commands.add_parser("open", help="Create a session in the current directory.")
     commands.add_parser("list", help="List all live sessions.")
     close = commands.add_parser("close", help="Close a session and keep its files.")
-    close.add_argument("port", help="The session port.")
+    close.add_argument("number", type=int, help="The session number from its URL path.")
     args = parser.parse_args()
-    if args.command == "open":
-        entries = [session_api.open_session()]
-    elif args.command == "list":
-        entries = session_api.list_sessions()
-    else:
-        session_api.close_session(sessions.validate_port(int(args.port)))
-        return
+    try:
+        if args.command == "open":
+            entries = [session_api.open_session()]
+        elif args.command == "list":
+            entries = session_api.list_sessions()
+        else:
+            session_api.close_session(args.number)
+            return
+    except (ValueError, RuntimeError, OSError) as exc:
+        parser.exit(1, f"imd: {exc}\n")
     for entry in entries:
         print(sessions.format_entry(entry.url, entry.cwd, entry.paths), flush=True)
 

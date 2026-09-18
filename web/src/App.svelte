@@ -4,8 +4,10 @@
   import TextPane from "./TextPane.svelte";
 
   const params = new URLSearchParams(location.hash.slice(1));
-  const token = params.get("token") || sessionStorage.getItem("imd-token") || "";
-  if (token) sessionStorage.setItem("imd-token", token);
+  const base = location.pathname.replace(/\/$/, "");
+  const tokenKey = `imd-token:${base}`;
+  const token = params.get("token") || sessionStorage.getItem(tokenKey) || "";
+  if (token) sessionStorage.setItem(tokenKey, token);
   if (params.has("token"))
     history.replaceState(null, "", location.pathname + location.search);
 
@@ -15,7 +17,7 @@
   function openLink(value) {
     const operation = opening.then(async () => {
       const url = /^https?:\/\//i.test(value);
-      const response = await fetch(url ? "/api/browser/open" : "/api/paths/open", {
+      const response = await fetch(`${base}${url ? "/api/browser/open" : "/api/paths/open"}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(url ? { url: value } : { path: value }),
@@ -34,7 +36,7 @@
   });
 
   onMount(async () => {
-    const response = await fetch("/api/session", {
+    const response = await fetch(`${base}/api/session`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = await response.json();
@@ -47,9 +49,9 @@
   <div class="session-layout" style={`grid-template-columns: repeat(${documents.length}, minmax(0, 1fr))`}>
     {#each documents as item, index (index)}
       {#if item.readonly}
-        <TextPane base={item.base} path={item.path} {token} onOpenLink={openLink} />
+        <TextPane base={base + item.base} path={item.path} {token} onOpenLink={openLink} />
       {:else}
-        <DocumentPane base={item.base} {token} paneId={`document-${index}`} onOpenLink={openLink} />
+        <DocumentPane base={base + item.base} {token} paneId={`document-${index}`} onOpenLink={openLink} />
       {/if}
     {/each}
   </div>

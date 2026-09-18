@@ -1,14 +1,39 @@
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import uvicorn
+from fastapi import FastAPI
 
 from imd.app import create_app
 
 
 def main():
     with TemporaryDirectory(prefix="imd-browser-test-") as directory:
-        app = create_app("document.md", Path(directory), token="browser-test")
+        root = Path(directory)
+        children = [("", create_app("document.md", root, token="browser-test"))]
+        for number in (1, 2):
+            cwd = root / str(number)
+            cwd.mkdir()
+            children.append(
+                (
+                    f"/{number}",
+                    create_app("document.md", cwd, token=f"browser-{number}"),
+                )
+            )
+
+        @asynccontextmanager
+        async def lifespan(app):
+            async with AsyncExitStack() as stack:
+                for _, child in children:
+                    await stack.enter_async_context(
+                        child.router.lifespan_context(child)
+                    )
+                yield
+
+        app = FastAPI(lifespan=lifespan)
+        for prefix, child in reversed(children):
+            app.mount(prefix, child)
         uvicorn.run(app, host="127.0.0.1", port=18741, log_level="warning")
 
 
