@@ -5,14 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "imd"
 version = "0.1.0"
-description = "Interactive Markdown with IPython and Svelte"
+description = "Interactive Markdown with a shell and Svelte"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",
   "uvicorn>=0.34,<1",
-  "ipykernel>=6.29,<8",
-  "jupyter-client>=8.6,<9",
   "markdown-it-py>=3,<5",
 ]
 

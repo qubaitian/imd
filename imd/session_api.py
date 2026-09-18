@@ -12,7 +12,6 @@ from ._service import request
 from .config import load_config
 
 TEMP_DIR = Path("/tmp")
-_owner_token: str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,9 +60,6 @@ def list_sessions() -> list[Session]:
 
 def close_session(number: int | None = None) -> None:
     """Stop the specified session or all sessions and keep their document files."""
-    owner_token = _owner_token
     if number is not None:
         sessions.validate_number(number)
-    else:
-        owner_token = owner_token or os.environ.get("IMD_SESSION_TOKEN")
-    request("close", number=number, owner_token=owner_token)
+    request("close", number=number, owner_token=os.environ.get("IMD_SESSION_TOKEN"))

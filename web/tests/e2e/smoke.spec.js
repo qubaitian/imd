@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 const headers = { Authorization: "Bearer browser-test" };
-const source = "# Smoke test\n\n```python\n1 + 1\n```\n";
+const source = "# Smoke test\n\n```python\nprint(1 + 1)\n```\n";
 
 test("opens the document and runs one code block", async ({ page, request }) => {
   const current = await (await request.get("/api/document", { headers })).json();
@@ -21,7 +21,7 @@ test("keeps session routes and tokens separate on one origin", async ({ page, re
     const current = await (await request.get(`/${number}/api/document`, { headers: auth })).json();
     await request.put(`/${number}/api/document`, {
       headers: auth,
-      data: { source: `# Session ${number}\n\n\`\`\`python\n${number} + 2\n\`\`\`\n`, revision: current.revision },
+      data: { source: `# Session ${number}\n\n\`\`\`python\nprint(${number} + 2)\n\`\`\`\n`, revision: current.revision },
     });
     await page.goto(`/${number}/#token=browser-${number}`);
     await expect(page.getByRole("heading", { name: `Session ${number}` })).toBeVisible();

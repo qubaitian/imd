@@ -7,8 +7,7 @@
   import { markdown } from "@codemirror/lang-markdown";
   import { StreamLanguage } from "@codemirror/language";
   import { shell } from "@codemirror/legacy-modes/mode/shell";
-  import { acceptCompletion, autocompletion } from "@codemirror/autocomplete";
-  import { kernelCompletion } from "./completion.js";
+  import { autocompletion } from "@codemirror/autocomplete";
   import { editorLinks } from "./links.js";
 
   let {
@@ -19,8 +18,6 @@
     onBlur = () => {},
     readonly = false,
     focus = true,
-    onComplete = async (_request, _signal) => null,
-    completionMode = "markdown",
   } = $props();
   let element;
   let view;
@@ -42,10 +39,7 @@
           basicSetup,
           syntax,
           editorLinks,
-          autocompletion({
-            override: [kernelCompletion(onComplete, completionMode)],
-            interactionDelay: 0,
-          }),
+          autocompletion({ override: [() => null], activateOnTyping: false }),
           EditorView.lineWrapping,
           editable.of(EditorState.readOnly.of(readonly)),
           Prec.highest(
@@ -64,13 +58,7 @@
                   return true;
                 },
               },
-              {
-                key: "Tab",
-                run: (editor) => {
-                  acceptCompletion(editor);
-                  return true;
-                },
-              },
+              { key: "Tab", run: () => true },
             ]),
           ),
           EditorView.contentAttributes.of({

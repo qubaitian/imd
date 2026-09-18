@@ -156,16 +156,19 @@ def test_session_number_validation(server):
             imd.close(number)
 
 
-def test_kernel_can_manage_other_sessions_but_cannot_close_its_own_session(server):
+def test_a_document_manages_other_sessions_but_cannot_close_its_own_session(
+    server, tmp_path
+):
     client, _ = server
     entry = imd.open()
-    source = (
-        "```python\n"
+    script = tmp_path / "close_own.py"
+    script.write_text(
+        "import imd\n"
         "new_session = imd.open()\n"
         "imd.close(new_session.number)\n"
         f"imd.close({entry.number})\n"
-        "```\n"
     )
+    source = f"```shell\n{sys.executable} {script}\n```\n"
     document = client.get(
         f"/{entry.number}/api/document", headers=headers(entry)
     ).json()
@@ -176,7 +179,7 @@ def test_kernel_can_manage_other_sessions_but_cannot_close_its_own_session(serve
         timeout=45,
     )
     assert response.status_code == 200
-    assert "A kernel cannot close its own session" in response.json()["source"]
+    assert "A session cannot close itself" in response.json()["source"]
     assert imd.list() == [entry]
 
 
@@ -302,29 +305,21 @@ def test_close_all_without_sessions_succeeds_without_starting_service(
 
 
 @pytest.mark.parametrize("interface", ["api", "cli"])
-def test_close_all_from_kernel_stops_other_sessions_and_itself(
+def test_close_all_from_a_document_stops_other_sessions_and_itself(
     server, tmp_path, interface
 ):
     client, _ = server
     caller = imd.open()
     other = imd.open()
     command = (
-        "imd.close()" if interface == "api" else f"!{sys.executable} -m imd.cli close"
+        f"{sys.executable} -c 'import imd; imd.close()'"
+        if interface == "api"
+        else f"{sys.executable} -m imd.cli close"
     )
     document = client.get(
         f"/{caller.number}/api/document", headers=headers(caller)
     ).json()
-    marker = tmp_path / "sessions-at-caller-close.json"
-    source = (
-        "```python\n"
-        "from pathlib import Path\n"
-        "try:\n"
-        f"    {command}\n"
-        "finally:\n"
-        f"    Path({str(marker)!r}).write_text(\n"
-        f"        Path({str(sessions.SESSIONS_FILE)!r}).read_text())\n"
-        "```\n"
-    )
+    source = f"```shell\n{command}\n```\n"
     response = client.post(
         f"/{caller.number}/api/execute",
         headers=headers(caller),
@@ -338,22 +333,23 @@ def test_close_all_from_kernel_stops_other_sessions_and_itself(
         sleep(0.02)
     assert_service_stops(client)
     assert all(Path(entry.paths[0]).is_file() for entry in (caller, other))
-    assert [entry["number"] for entry in json.loads(marker.read_text())] == [
-        caller.number
-    ]
+    assert imd.list() == []
 
 
-def test_close_all_interrupts_running_code(server, tmp_path):
+def test_close_all_stops_running_code(server, tmp_path):
     client, _ = server
     entry = imd.open()
     imd.open()
     marker = tmp_path / "running"
     source = (
         "```python\n"
-        "from pathlib import Path\n"
         "import time\n"
+        "from pathlib import Path\n"
         f"Path({str(marker)!r}).touch()\n"
-        "time.sleep(60)\n"
+        "try:\n"
+        "    time.sleep(60)\n"
+        "except KeyboardInterrupt:\n"
+        "    print('stopped by close')\n"
         "```\n"
     )
     document = client.get(
@@ -374,7 +370,7 @@ def test_close_all_interrupts_running_code(server, tmp_path):
                 sleep(0.02)
             imd.close()
             assert_service_stops(client)
-            assert "KeyboardInterrupt" in execution.result(timeout=10).json()["source"]
+            assert "stopped by close" in execution.result(timeout=10).json()["source"]
         finally:
             for remaining in imd.list():
                 imd.close(remaining.number)

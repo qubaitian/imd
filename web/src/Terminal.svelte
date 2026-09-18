@@ -4,11 +4,10 @@
   import "@xterm/xterm/css/xterm.css";
   import { terminalLinks } from "./links.js";
 
-  let { prefix = "", data = "", disabled = false, onData, onOpenLink } = $props();
+  let { data = "", disabled = false, onData, onOpenLink } = $props();
   let host;
   let terminal = $state.raw(null);
   let written = "";
-  let previousPrefix = "";
 
   onMount(() => {
     const instance = new Terminal({
@@ -53,11 +52,9 @@
 
   $effect(() => {
     if (!terminal) return;
-    if (prefix !== previousPrefix || !data.startsWith(written)) {
+    if (!data.startsWith(written)) {
       terminal.reset();
       written = "";
-      previousPrefix = prefix;
-      terminal.write(prefix);
     }
     const next = data.slice(written.length);
     written = data;

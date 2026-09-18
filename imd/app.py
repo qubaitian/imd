@@ -14,29 +14,31 @@ from pydantic import BaseModel
 from . import browser, sessions
 from . import paths as local_paths
 from .document import Conflict, Document, blocks, with_output
-from .kernel import Kernel
+from .shell import Shell, check_language
 
 STATIC = Path(__file__).parent / "static"
 
 
 class _LiveEvents:
+    """Join the terminal data that arrives between two reads of the stream."""
+
     def __init__(self):
         self._queue = Queue()
-        self._output = None
+        self._data = ""
         self._lock = RLock()
 
-    def put(self, event):
+    def data(self, text):
         with self._lock:
-            if event.get("type") == "output":
-                self._output = event
-                return
-            self._queue.put(event)
+            self._data += text
+
+    def put(self, event):
+        self._queue.put(event)
 
     def take(self):
         with self._lock:
-            if self._output is not None:
-                event = self._output
-                self._output = None
+            if self._data:
+                event = {"type": "data", "text": self._data}
+                self._data = ""
                 return event
         try:
             return self._queue.get_nowait()
@@ -58,13 +60,7 @@ class ParseRequest(BaseModel):
 
 
 class InputRequest(BaseModel):
-    request: str
     value: str
-
-
-class CompleteRequest(BaseModel):
-    code: str
-    cursor: int
 
 
 class BrowserRequest(BaseModel):
@@ -82,13 +78,13 @@ def _document_app(
     lock = RLock()
     active_run = None
     session_token = token or secrets.token_urlsafe(32)
-    kernel = Kernel(cwd, session_token)
+    shell = Shell(cwd, session_token)
     asset_cookie = f"imd-assets-{session_token[:12]}"
 
     @asynccontextmanager
     async def lifespan(app):
         yield
-        await asyncio.to_thread(kernel.close)
+        await asyncio.to_thread(shell.close)
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.token = session_token
@@ -179,20 +175,6 @@ def _document_app(
     def parse_document(request: ParseRequest):
         return {"blocks": blocks(request.source)}
 
-    @app.post("/api/complete", dependencies=[Depends(authorize)])
-    def complete(request: CompleteRequest):
-        require_editable()
-        if not 0 <= request.cursor <= len(request.code):
-            raise HTTPException(422, "The cursor must be inside the code.")
-        with lock:
-            if active_run is not None:
-                return {
-                    "matches": [],
-                    "cursor_start": request.cursor,
-                    "cursor_end": request.cursor,
-                }
-        return kernel.complete(request.code, request.cursor)
-
     @app.post("/api/execute", dependencies=[Depends(authorize)])
     def execute(request: ExecuteRequest, accept: str = Header(default="")):
         nonlocal active_run
@@ -207,6 +189,10 @@ def _document_app(
                 or items[request.block]["kind"] != "code"
             ):
                 raise HTTPException(400, "Select a code block.")
+            try:
+                language = check_language(items[request.block]["language"])
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
             saved = save(request.source, request.revision)
             run_id = secrets.token_urlsafe(24)
             active_run = run_id
@@ -214,7 +200,7 @@ def _document_app(
         def finish(emit=None):
             nonlocal active_run
             try:
-                output = kernel.execute(items[request.block]["code"], emit)
+                output = shell.execute(items[request.block]["code"], language, emit)
                 result = with_output(request.source, request.block, output)
                 with lock:
                     return save(result, saved["revision"])
@@ -229,7 +215,7 @@ def _document_app(
 
         def work():
             try:
-                events.put({"type": "done", "document": finish(events.put)})
+                events.put({"type": "done", "document": finish(events.data)})
             except Exception as exc:
                 events.put({"type": "error", "detail": str(exc)})
 
@@ -252,7 +238,7 @@ def _document_app(
             finally:
                 with lock:
                     if active_run == run_id:
-                        kernel.interrupt()
+                        shell.interrupt()
 
         return StreamingResponse(
             stream(),
@@ -265,7 +251,7 @@ def _document_app(
         with lock:
             if active_run != run_id:
                 raise HTTPException(409, "This execution is no longer active.")
-            kernel.input(request.request, request.value)
+            shell.send(request.value)
             return {"ok": True}
 
     @app.post("/api/execute/{run_id}/stop", dependencies=[Depends(authorize)])
@@ -273,7 +259,15 @@ def _document_app(
         with lock:
             if active_run != run_id:
                 raise HTTPException(409, "This execution is no longer active.")
-            kernel.interrupt()
+            shell.interrupt()
+            return {"ok": True}
+
+    @app.post("/api/execute/{run_id}/kill", dependencies=[Depends(authorize)])
+    def kill(run_id: str):
+        with lock:
+            if active_run != run_id:
+                raise HTTPException(409, "This execution is no longer active.")
+            shell.kill()
             return {"ok": True}
 
     @app.get("/")

@@ -17,7 +17,7 @@ def test_read_save_execute_document(tmp_path):
         document = response.json()
         assert document["source"] == "# Smoke test\n"
 
-        source = "# Smoke test\n\n```python\n1 + 1\n```\n"
+        source = "# Smoke test\n\n```python\nprint(1 + 1)\n```\n"
         response = client.put(
             "/api/document",
             json={"source": source, "revision": document["revision"]},

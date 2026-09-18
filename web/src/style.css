@@ -712,27 +712,6 @@ main {
 .command-terminal .xterm {
   width: max-content;
 }
-.command-input {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  font-size: 12px;
-}
-.command-input input {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid #c4d0db;
-  border-radius: 4px;
-  padding: 6px 8px;
-}
-.command-input button {
-  padding: 6px 10px;
-  border: 1px solid #c4d0db;
-  border-radius: 4px;
-  background: #f6f8fa;
-}
-
 .session-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

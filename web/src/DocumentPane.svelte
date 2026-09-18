@@ -8,7 +8,7 @@
   import Editor from "./Editor.svelte";
   import Terminal from "./Terminal.svelte";
   import { editBlock, blockAtCursor, deleteBlock, adjacentOutput } from "./document.js";
-  import { followLinks, linkedHtml, linkedText } from "./links.js";
+  import { followLinks, linkedHtml } from "./links.js";
 
   hljs.registerLanguage("python", python);
   hljs.registerLanguage("bash", bash);
@@ -27,7 +27,6 @@
   };
   let { base, token, paneId, onOpenLink } = $props();
   let pane;
-  const inputId = $derived(`command-input-${paneId}`);
 
   let doc = $state(null);
   let mode = $state("preview");
@@ -39,12 +38,9 @@
   let recovery = $state("");
   let running = $state(-1);
   let runId = $state("");
-  let liveOutput = $state("");
-  let inputRequest = $state(null);
-  let terminalOutput = $state(null);
+  let terminalData = $state("");
   let terminalInputQueue = Promise.resolve();
-  let inputValue = $state("");
-  let sendingInput = $state(false);
+  let interrupted = $state(false);
   let stopping = $state(false);
   let controlError = $state("");
   let linkError = $state("");
@@ -146,9 +142,6 @@
         end: block.end_utf16,
       }));
     return data;
-  }
-  function complete(request, signal) {
-    return api("complete", "POST", request, null, signal);
   }
   async function openLink(value) {
     linkError = "";
@@ -276,10 +269,8 @@
       draft = keepEditor ? parsed.blocks[index].code : "";
       running = index;
       runId = "";
-      liveOutput = "";
-      inputRequest = null;
-      terminalOutput = null;
-      inputValue = "";
+      terminalData = "";
+      interrupted = false;
       stopping = false;
       controlError = "";
       status = "Running";
@@ -291,32 +282,7 @@
           block: index,
         }, (event) => {
           if (event.type === "start") runId = event.id;
-          else if (event.type === "output") {
-            if (event.terminal) {
-              if (terminalOutput?.id !== event.terminal || event.reset) {
-                terminalOutput = { id: event.terminal, prefix: event.reset ? "" : liveOutput, data: "" };
-              }
-              terminalOutput.data += event.data;
-            }
-            const output = pane?.querySelector(".live-output .output-body");
-            const follow = !event.terminal && (!output || output.scrollHeight - output.scrollTop - output.clientHeight < 32);
-            liveOutput = event.text;
-            if (follow) tick().then(() => {
-              if (output) output.scrollTop = output.scrollHeight;
-            });
-          }
-          else if (event.type === "input") {
-            inputRequest = event.id ? event : null;
-            inputValue = "";
-            if (event.terminal && terminalOutput?.id !== event.id) {
-              terminalOutput = { id: event.id, prefix: liveOutput, data: "" };
-            }
-            if (event.id && !event.terminal) tick().then(() => {
-              const input = pane?.querySelector(".command-input input");
-              input?.focus({ preventScroll: true });
-              input?.scrollIntoView({ block: "nearest" });
-            });
-          }
+          else if (event.type === "data") terminalData += event.text;
         });
         accept(data, source);
         if (mode === "preview") {
@@ -328,49 +294,30 @@
       } finally {
         running = -1;
         runId = "";
-        inputRequest = null;
+        interrupted = false;
         stopping = false;
         if (status === "Running") status = "Saved";
       }
     });
   }
-  async function sendInput(event) {
-    event.preventDefault();
-    if (!inputRequest || sendingInput || !runId) return;
-    const request = inputRequest;
-    sendingInput = true;
-    controlError = "";
-    try {
-      await api(`execute/${runId}/input`, "POST", {
-        request: request.id,
-        value: inputValue,
-      });
-      if (inputRequest?.id === request.id) {
-        inputValue = "";
-        if (!request.terminal) inputRequest = null;
-      }
-    } finally {
-      sendingInput = false;
-      if (inputRequest?.id === request.id) {
-        await tick();
-        pane?.querySelector(".command-input input")?.focus({ preventScroll: true });
-      }
-    }
-  }
   function sendTerminalInput(value) {
-    if (!inputRequest?.terminal || !runId || stopping) return;
+    if (!runId || stopping) return;
     const execution = runId;
-    const request = inputRequest.id;
     terminalInputQueue = terminalInputQueue.then(async () => {
-      if (runId !== execution || inputRequest?.id !== request) return;
-      await api(`execute/${execution}/input`, "POST", { request, value });
+      if (runId !== execution) return;
+      await api(`execute/${execution}/input`, "POST", { value });
     });
   }
   async function stop() {
     if (!runId || stopping) return;
-    stopping = true;
     controlError = "";
-    await api(`execute/${runId}/stop`, "POST", {});
+    if (!interrupted) {
+      interrupted = true;
+      await api(`execute/${runId}/stop`, "POST", {});
+      return;
+    }
+    stopping = true;
+    await api(`execute/${runId}/kill`, "POST", {});
   }
   function append(kind) {
     enqueue(async () => {
@@ -467,36 +414,17 @@
         >{@render trashIcon()}Del</button
       >
       <button class="run-button" onclick={stop} disabled={!runId || stopping}>
-        {stopping ? "Stopping…" : "Stop"}
+        {stopping ? "Killing…" : interrupted ? "Kill" : "Stop"}
       </button>
     </div>
-    {#if inputRequest?.terminal}
-      {#key inputRequest.id}
-        <Terminal
-          prefix={terminalOutput?.prefix || ""}
-          data={terminalOutput?.data || ""}
-          disabled={stopping}
-          onData={sendTerminalInput}
-          onOpenLink={openLink}
-        />
-      {/key}
-    {:else}
-      <pre class="output-body">{@html linkedText(liveOutput || "(waiting for output)")}</pre>
-    {/if}
-    {#if inputRequest && !inputRequest.terminal}
-      <form class="command-input" onsubmit={sendInput}>
-        <label for={inputId}>{inputRequest.password ? "Password" : "Input"}</label>
-        <input
-          id={inputId}
-          aria-label="Command input"
-          type={inputRequest.password ? "password" : "text"}
-          bind:value={inputValue}
-          autocomplete="off"
-          disabled={sendingInput || stopping}
-        />
-        <button type="submit" disabled={sendingInput || stopping}>Send</button>
-      </form>
-    {/if}
+    {#key runId}
+      <Terminal
+        data={terminalData}
+        disabled={stopping}
+        onData={sendTerminalInput}
+        onOpenLink={openLink}
+      />
+    {/key}
     {#if controlError}<div role="alert">{controlError}</div>{/if}
   </section>
 {/snippet}
@@ -546,8 +474,6 @@
         {#if active === index}<Editor
             value={draft}
             language={block.language}
-            onComplete={complete}
-            completionMode="code"
             onChange={changed}
             onRun={() => run(index)}
             onBlur={save}
@@ -682,7 +608,6 @@
               <Editor
                 value={sourceDraft}
                 language="markdown"
-                onComplete={complete}
                 onChange={changed}
                 onRun={(position) => {
                   cursor = position;
@@ -738,7 +663,7 @@
       </div>
       <div class="statusbar">
         <span title={doc?.path}>{doc?.path || "IMD"}</span><span
-          >Markdown<span class="meta-dot">·</span>IPython</span
+          >Markdown<span class="meta-dot">·</span>Shell</span
         >
       </div>
     </main>

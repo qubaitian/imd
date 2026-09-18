@@ -50,7 +50,7 @@ class Service:
                 if entry is None:
                     raise ValueError("The session does not exist.")
                 if request.get("owner_token") == entry["app"].state.token:
-                    raise ValueError("A kernel cannot close its own session.")
+                    raise ValueError("A session cannot close itself.")
                 await self.close(number)
                 last = not self.active
                 if last:
