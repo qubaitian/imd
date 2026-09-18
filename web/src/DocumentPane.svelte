@@ -549,8 +549,8 @@
     <div class="breadcrumb">
       <svg viewBox="0 0 24 24" aria-hidden="true"
         ><path d="M5 3h9l5 5v13H5zM14 3v6h5" /></svg
-      ><span title={doc?.name}>{doc?.name || "Markdown"}</span><span class="local-badge"
-        >Local</span
+      ><span class="breadcrumb-path" title={doc?.path}
+        ><bdi>{doc?.path || "Markdown"}</bdi></span
       >
     </div>
     <div class="view-tabs" aria-label="Document view">
@@ -601,9 +601,6 @@
         {#if doc}
           {#if mode === "source"}
             <section class="source-panel">
-              <div class="source-title">
-                <span>{doc.name}</span><span>Markdown</span>
-              </div>
               <Editor
                 value={sourceDraft}
                 language="markdown"
@@ -646,24 +643,8 @@
             <article class="notebook markdown-body">
               {@render documentBlocks(null)}
             </article>
-            <div class="append-row">
-              <span></span><button
-                onpointerdown={keepFocus}
-                onclick={() => append("markdown")}
-                disabled={running >= 0}>＋ Text</button
-              ><button
-                onpointerdown={keepFocus}
-                onclick={() => append("code")}
-                disabled={running >= 0}>＋ Code</button
-              ><span></span>
-            </div>
           {/if}
         {:else if !error}<div class="loading-state">Opening the document…</div>{/if}
-      </div>
-      <div class="statusbar">
-        <span title={doc?.path}>{doc?.path || "IMD"}</span><span
-          >Markdown<span class="meta-dot">·</span>Shell</span
-        >
       </div>
     </main>
   </div>

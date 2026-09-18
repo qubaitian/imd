@@ -26,12 +26,11 @@
 
 <section class="app-shell text-pane" data-panel-id={paneId} aria-label={path}>
   <header class="topbar">
-    <div class="breadcrumb"><span>{path.split("/").pop()}</span></div>
+    <div class="breadcrumb"><span class="breadcrumb-path" title={path}><bdi>{path}</bdi></span></div>
     <span class="readonly-label">Read-only</span>
   </header>
   {#if error}<div class="error-banner" role="alert">{error}</div>{/if}
   <div class="document-scroll" use:followLinks={openLink}>
     <pre class="text-file">{@html linkedText(source)}</pre>
   </div>
-  <footer class="statusbar"><span title={path}>{path}</span></footer>
 </section>

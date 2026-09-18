@@ -90,25 +90,19 @@ kbd {
   gap: 10px;
   font-size: 13px;
 }
-.breadcrumb > span:first-of-type {
+.breadcrumb svg {
+  flex-shrink: 0;
+  color: #73808c;
+}
+.breadcrumb-path {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.breadcrumb svg,
-.local-badge {
-  flex-shrink: 0;
-}
-.breadcrumb svg {
-  color: #73808c;
-}
-.local-badge {
-  font-size: 10px;
-  color: #75818d;
-  border: 1px solid #dce1e6;
-  border-radius: 4px;
-  padding: 1px 5px;
-  margin-left: 3px;
+  direction: rtl;
+  text-align: left;
+  color: #97a2ac;
 }
 .save-state {
   flex-shrink: 0;
@@ -175,11 +169,8 @@ main {
 .document-scroll {
   flex: 1;
   overflow: auto;
-  padding: 34px max(34px, calc((100% - 840px) / 2)) 0;
+  padding: 34px max(34px, calc((100% - 840px) / 2)) 34px;
   scroll-behavior: smooth;
-}
-.meta-dot {
-  padding: 0 9px;
 }
 .notebook.markdown-body {
   font-size: 15px;
@@ -448,58 +439,8 @@ main {
   border-radius: 7px;
   overflow: hidden;
 }
-.source-title {
-  display: flex;
-  justify-content: space-between;
-  background: #f6f8fa;
-  padding: 10px 15px;
-  color: #8794a0;
-  font-size: 11px;
-  border-bottom: 1px solid #e2e7eb;
-}
 .source-panel .cm-content {
   min-height: 55vh;
-}
-.append-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin: 37px 0 25px;
-}
-.append-row > span {
-  flex: 1;
-  height: 1px;
-  background: #edf0f3;
-}
-.append-row button {
-  border: 0;
-  background: #fff;
-  font-size: 11px;
-  color: #93a0ac;
-  padding: 6px 10px;
-  border-radius: 4px;
-}
-.append-row button:hover {
-  background: #f1f5f9;
-  color: #466986;
-}
-.statusbar {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 19px;
-  border-top: 1px solid #edf0f3;
-  font-size: 10px;
-  color: #97a2ac;
-  gap: 20px;
-  background: #fcfdfe;
-}
-.statusbar > span:first-child {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.statusbar > span:last-child {
-  flex-shrink: 0;
 }
 .empty-state {
   padding: 53px 0 62px;
@@ -632,7 +573,7 @@ main {
 }
 @media (max-width: 900px) {
   .document-scroll {
-    padding: 27px 28px 0;
+    padding: 27px 28px 27px;
   }
   .topbar {
     padding: 0 20px;
@@ -647,24 +588,18 @@ main {
     font-size: 12px;
     min-width: 0;
   }
-  .breadcrumb > span:first-of-type {
+  .breadcrumb-path {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .local-badge {
-    display: none;
-  }
   .document-scroll {
-    padding: 25px 21px 0;
+    padding: 25px 21px 25px;
   }
   .markdown-body .prose-block h1 {
     font-size: 25px;
   }
   .save-state {
     font-size: 10px;
-  }
-  .statusbar > span:first-child {
-    max-width: 63%;
   }
   .empty-state {
     padding: 38px 0;
@@ -761,13 +696,10 @@ main {
     padding: 0 14px;
     gap: 12px;
   }
-  .local-badge {
-    display: none;
-  }
   .breadcrumb {
     min-width: 0;
   }
-  .breadcrumb > span:first-of-type {
+  .breadcrumb-path {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -782,7 +714,7 @@ main {
     gap: 5px;
   }
   .document-scroll {
-    padding: 24px 20px 0;
+    padding: 24px 20px 24px;
   }
 }
 .imd-url, .imd-path {
