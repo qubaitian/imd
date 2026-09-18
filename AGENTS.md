@@ -1,17 +1,9 @@
 when you chat, reply, docs, code comments, git commits:
-    - Use **ASD-STE100 Simplified Technical English**.  
+    - Use simple and easy words.  
     - Active voice. Present tense.
     - One word one meaning: same term for same thing.
     - One idea per sentence.  
     - One sentence per line with two spaces. 
-
-Use **First principle**.  
-    - Challenge anything that is unnecessary, overly complex, or based on weak assumptions.  
-    - What is necessary?  
-    - What tools, dependencies, and environment do you need?  
-    - What can be deleted?  
-    - What can be simplified?  
-
 Use **Test-Driven Development**.  
     - Design **deep modules** that hide substantial behaviour behind a small, simple interface.  
     - Test module behaviour through those interfaces.  
@@ -19,13 +11,6 @@ Use **Test-Driven Development**.
 
 Use **Conventional Commits** for commit messages.  
 Use **Conventional Branch Name**.  
-
-Keep the Python API and CLI isomorphic.  
-Both interfaces expose the same session operations.  
-Both interfaces use the same operation names.  
-Both interfaces use the same arguments and behavior.  
-Both interfaces return the same session information.  
-Apply each session interface change to both interfaces.  
 
 Interview the user until you share one understanding.  
 Map the work as a **design tree**.  

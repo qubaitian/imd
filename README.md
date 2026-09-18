@@ -6,6 +6,17 @@ Svelte provides the interface.
 CodeMirror provides the editors.  
 Each document uses a persistent shell with a PTY.  
 
+## Design
+
+Keep the Python API and CLI isomorphic.  
+Both interfaces expose the same session operations.  
+Both interfaces use the same operation names.  
+Both interfaces use the same arguments and behavior.  
+Both interfaces return the same session information.  
+Apply each session interface change to both interfaces.  
+
+
+
 ## Scope
 
 IMD supports Unix and macOS.  
