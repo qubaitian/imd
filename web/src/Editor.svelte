@@ -28,7 +28,7 @@
     const syntax =
       language === "markdown"
         ? markdown()
-        : ["python", "py"].includes(language)
+        : language === "python"
           ? python()
           : StreamLanguage.define(shell);
     view = new EditorView({

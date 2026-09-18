@@ -72,7 +72,7 @@
   function highlight(code, language) {
     return linkedHtml(
       hljs.highlight(code, {
-        language: ["python", "py"].includes(language) ? "python" : "bash",
+        language: language === "python" ? "python" : "bash",
       }).value,
     );
   }
@@ -146,7 +146,9 @@
   async function openLink(value) {
     linkError = "";
     try {
-      await save();
+      if (running >= 0)
+        throw new Error("Wait for execution to finish before opening a link.");
+      await enqueue(saveNow);
       await onOpenLink(value);
     } catch (failure) {
       linkError = failure.message;
@@ -443,10 +445,7 @@
         <div class="code-header">
           <div>
             <span class="code-symbol"
-              >{block.language === "python" ||
-              block.language === "py"
-                ? "{ }"
-                : ">_"}</span
+              >{block.language === "python" ? "{ }" : ">_"}</span
             ><span>{block.language || "text"}</span>
           </div>
           <div>

@@ -5,7 +5,7 @@ from time import sleep
 
 import pytest
 
-from imd.shell import Shell
+from imd.shell import Shell, check_language
 
 
 @pytest.fixture
@@ -71,6 +71,16 @@ def test_unknown_language_reports_an_error(shell):
     with pytest.raises(ValueError, match="sql"):
         shell.execute("select 1", "sql")
     assert shell.execute("echo alive") == "alive\n"
+
+
+def test_language_tags_ignore_case():
+    assert check_language("PYTHON") == "python"
+    assert check_language("Shell") == "shell"
+
+
+def test_py_tag_is_not_python():
+    with pytest.raises(ValueError, match="run py blocks"):
+        check_language("py")
 
 
 def test_unsupported_shell_reports_an_error(tmp_path, monkeypatch):
