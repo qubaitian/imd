@@ -73,6 +73,8 @@ def request(operation: str, **arguments):
                 if operation == "list":
                     return []
                 if operation == "close":
+                    if arguments["number"] is None:
+                        return {"last": True}
                     raise ValueError("The session does not exist.")
                 _start(arguments["config"])
             result = _call({"operation": operation, **arguments})

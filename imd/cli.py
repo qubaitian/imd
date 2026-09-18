@@ -10,8 +10,13 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("open", help="Create a session in the current directory.")
     commands.add_parser("list", help="List all live sessions.")
-    close = commands.add_parser("close", help="Close a session and keep its files.")
-    close.add_argument("number", type=int, help="The session number from its URL path.")
+    close = commands.add_parser("close", help="Close sessions and keep their files.")
+    close.add_argument(
+        "number",
+        type=int,
+        nargs="?",
+        help="The session number from its URL path. Omit to close all sessions.",
+    )
     args = parser.parse_args()
     try:
         if args.command == "open":

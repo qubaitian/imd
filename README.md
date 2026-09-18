@@ -90,7 +90,12 @@ IPython runs the code.
 - `imd list` prints all live sessions, one session per line.  
 - An empty list prints no text.  
 - `imd close <number>` stops one session and keeps its files.  
-- Close accepts a positive integer session number from the URL path.  
+- `imd close` stops all sessions for the current user across all start directories.  
+- Close without a number stops running code, keeps document files, and stops the shared service.  
+- Close without a number succeeds when no sessions exist and does not start the service.  
+- If one session fails to close, close attempts the remaining sessions and reports the errors.  
+- An external close call waits for the shared service to stop before it reports success.  
+- Close accepts an optional positive integer session number from the URL path.  
 - Closing the last session stops the shared service and releases the port.  
 - Close does not accept a file path or URL.  
 - Close prints no text on success and reports an error on failure.  
@@ -112,6 +117,7 @@ IPython runs the code.
 - `imd.open()` returns a `Session` object.  
 - `imd.list()` returns a list of `Session` objects.  
 - `imd.close(number)` stops the specified session, keeps its files, and returns `None`.  
+- `imd.close()` stops all sessions with the same behavior as `imd close`.  
 - `Session.url` is the session address.  
 - `Session.cwd` is the absolute start directory.  
 - `Session.paths` is a tuple of absolute document paths in display order.  
@@ -121,8 +127,11 @@ IPython runs the code.
 - An omitted HTTP port means 80.  
 - API calls return data without printing it.  
 - API failures raise exceptions.  
-- A kernel cannot close its own session through the Python API.  
+- A kernel cannot close its own session through `imd.close(number)`.  
 - The CLI or another session can close that session.  
+- A kernel can close all sessions through `imd.close()` or `imd close`.  
+- Close without a number closes all other sessions before it closes the caller's session.  
+- A call from that session does not need to return a value.  
 - Code block editors and code regions in Source view request completion from their document kernel.  
 - Typing requests completion asynchronously and does not block input.  
 - The editor shows a menu when candidates exist.  
@@ -254,6 +263,7 @@ The service listens on `0.0.0.0:8000` by default.
 All sessions share that port.  
 The printed address includes the access credential for the current session.  
 Use `imd close <number>` to stop one session.  
+Use `imd close` to stop all sessions and the shared service.  
 
 For daily use from any directory, install the tool once from the project directory.  
 
@@ -331,7 +341,7 @@ config = {
 Direct access requires the server firewall to permit the configured port.  
 The CLI and Python API use the same configuration.  
 A running service keeps its initial settings.  
-After changing settings, close all sessions, then run `imd open`.  
+After changing settings, run `imd close`, then run `imd open`.  
 List and close remain available if the configuration file contains an error.  
 
 ## Use

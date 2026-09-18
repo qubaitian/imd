@@ -59,7 +59,11 @@ def list_sessions() -> list[Session]:
     return [_session(item) for item in request("list")]
 
 
-def close_session(number: int) -> None:
-    """Stop one session by number and keep its document files."""
-    sessions.validate_number(number)
-    request("close", number=number, owner_token=_owner_token)
+def close_session(number: int | None = None) -> None:
+    """Stop the specified session or all sessions and keep their document files."""
+    owner_token = _owner_token
+    if number is not None:
+        sessions.validate_number(number)
+    else:
+        owner_token = owner_token or os.environ.get("IMD_SESSION_TOKEN")
+    request("close", number=number, owner_token=owner_token)

@@ -43,6 +43,8 @@ class Service:
                     )
                 return await self.open(Path(request["cwd"]))
             if operation == "close":
+                if request["number"] is None:
+                    return await self.close_all(request.get("owner_token"))
                 number = sessions.validate_number(request["number"])
                 entry = self.active.get(number)
                 if entry is None:
@@ -90,6 +92,23 @@ class Service:
             await entry["context"].__aexit__(None, None, None)
         finally:
             sessions.remove_session(number)
+
+    async def close_all(self, owner_token):
+        numbers = sorted(
+            self.active,
+            key=lambda number: self.active[number]["app"].state.token == owner_token,
+        )
+        errors = []
+        for number in numbers:
+            try:
+                await self.close(number)
+            except Exception as exc:
+                logger.exception("Session %s fails to close.", number)
+                errors.append(f"Session {number}: {exc}")
+        self.server.should_exit = not self.active
+        if errors:
+            raise RuntimeError("\n".join(errors))
+        return {"last": not self.active}
 
     async def control(self, reader, writer):
         try:
