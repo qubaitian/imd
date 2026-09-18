@@ -8,6 +8,14 @@ IPython runs the code.
 
 ## Confirmed design
 
+### Document layout
+
+- One top row shows the file name, Document and Source controls, and save status in that order.  
+- The top row has a height of 48 pixels.  
+- The top row has no IMD logo or run shortcut hint.  
+- The document has no footer with editing hints or execution time.  
+- Code blocks keep their Run controls.  
+
 ### Browser links
 
 - On macOS, Cmd + click opens HTTP and HTTPS links in Google Chrome.  

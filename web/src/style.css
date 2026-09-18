@@ -73,50 +73,31 @@ kbd {
   flex-direction: column;
 }
 .topbar {
-  height: 62px;
+  height: 48px;
   flex-shrink: 0;
   border-bottom: 1px solid #dfe3e8;
   background: #f7f8fa;
   display: flex;
   align-items: center;
-  padding: 0 25px;
+  padding: 0 24px;
   gap: 24px;
 }
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.brand strong {
-  font-size: 21px;
-  letter-spacing: -0.8px;
-  font-weight: 650;
-}
-.brand-mark {
-  background: #242d36;
-  color: white;
-  font-size: 21px;
-  font-weight: 650;
-  line-height: 29px;
-  letter-spacing: -2px;
-  border-radius: 6px;
-  width: 31px;
-  height: 31px;
-  text-align: center;
-}
-.brand-mark span {
-  font-size: 19px;
-}
-.topbar-divider {
-  height: 21px;
-  width: 1px;
-  background: #dce1e6;
-}
 .breadcrumb {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
   font-size: 13px;
+}
+.breadcrumb > span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.breadcrumb svg,
+.local-badge {
+  flex-shrink: 0;
 }
 .breadcrumb svg {
   color: #73808c;
@@ -130,7 +111,10 @@ kbd {
   margin-left: 3px;
 }
 .save-state {
-  margin-left: auto;
+  flex-shrink: 0;
+  min-width: 58px;
+  justify-content: flex-end;
+  white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -162,16 +146,8 @@ main {
   min-width: 0;
   background: #fff;
 }
-.document-toolbar {
-  height: 57px;
-  border-bottom: 1px solid #edf0f3;
-  display: flex;
-  align-items: center;
-  padding: 0 37px;
-  flex-shrink: 0;
-  justify-content: space-between;
-}
 .view-tabs {
+  flex-shrink: 0;
   height: 100%;
   display: flex;
   gap: 24px;
@@ -195,16 +171,6 @@ main {
 .view-tabs svg {
   width: 14px;
   height: 14px;
-}
-.shortcut {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.shortcut > span {
-  font-size: 10px;
-  color: #84909a;
-  margin-left: 6px;
 }
 .document-scroll {
   flex: 1;
@@ -517,16 +483,6 @@ main {
   background: #f1f5f9;
   color: #466986;
 }
-.document-footer {
-  border-top: 1px solid #edf0f3;
-  display: flex;
-  justify-content: space-between;
-  color: #a0a9b2;
-  font-size: 10px;
-  padding: 18px 0 28px;
-  margin-top: 35px;
-  gap: 15px;
-}
 .statusbar {
   display: flex;
   justify-content: space-between;
@@ -678,19 +634,12 @@ main {
   .document-scroll {
     padding: 27px 28px 0;
   }
-  .document-toolbar {
-    padding: 0 28px;
-  }
   .topbar {
     padding: 0 20px;
-  }
-  .shortcut > span {
-    display: none;
   }
 }
 @media (max-width: 650px) {
   .topbar {
-    height: 55px;
     padding: 0 16px;
     gap: 14px;
   }
@@ -699,19 +648,11 @@ main {
     min-width: 0;
   }
   .breadcrumb > span:first-of-type {
-    max-width: 145px;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .local-badge {
     display: none;
-  }
-  .brand strong {
-    display: none;
-  }
-  .document-toolbar {
-    padding: 0 20px;
-    height: 51px;
   }
   .document-scroll {
     padding: 25px 21px 0;
@@ -721,9 +662,6 @@ main {
   }
   .save-state {
     font-size: 10px;
-  }
-  .document-footer {
-    font-size: 9px;
   }
   .statusbar > span:first-child {
     max-width: 63%;
@@ -813,7 +751,7 @@ main {
     padding: 0 14px;
     gap: 12px;
   }
-  .brand strong, .local-badge, .shortcut, .document-footer > span:last-child {
+  .local-badge {
     display: none;
   }
   .breadcrumb {
@@ -827,8 +765,11 @@ main {
   .save-state {
     flex-shrink: 0;
   }
-  .document-toolbar {
-    padding: 0 16px;
+  .view-tabs {
+    gap: 14px;
+  }
+  .view-tabs button {
+    gap: 5px;
   }
   .document-scroll {
     padding: 24px 20px 0;

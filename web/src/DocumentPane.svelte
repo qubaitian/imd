@@ -51,7 +51,6 @@
   let cursor = 0;
   let queue = Promise.resolve();
   let suppressBlur = false;
-  let lastRun = $state("");
 
   const markdownEnvironment = $derived.by(() => {
     const environment = {};
@@ -285,7 +284,6 @@
       controlError = "";
       status = "Running";
       error = "";
-      const started = performance.now();
       try {
         const data = await api("execute", "POST", {
           source,
@@ -325,7 +323,6 @@
           active = keepEditor ? index : -1;
           draft = keepEditor ? data.blocks[index].code : "";
         }
-        lastRun = `${((performance.now() - started) / 1000).toFixed(1)} s`;
       } catch (failure) {
         error = failure.message;
       } finally {
@@ -624,15 +621,33 @@
 
 <div class="app-shell" bind:this={pane}>
   <header class="topbar">
-    <div class="brand" aria-label="IMD">
-      <span class="brand-mark">m<span>↓</span></span><strong>imd</strong>
-    </div>
-    <span class="topbar-divider"></span>
     <div class="breadcrumb">
       <svg viewBox="0 0 24 24" aria-hidden="true"
         ><path d="M5 3h9l5 5v13H5zM14 3v6h5" /></svg
-      ><span>{doc?.name || "Markdown"}</span><span class="local-badge"
+      ><span title={doc?.name}>{doc?.name || "Markdown"}</span><span class="local-badge"
         >Local</span
+      >
+    </div>
+    <div class="view-tabs" aria-label="Document view">
+      <button
+        class:selected={mode === "preview"}
+        onpointerdown={keepFocus}
+        onclick={() => switchMode("preview")}
+        disabled={running >= 0}
+        ><svg viewBox="0 0 24 24" aria-hidden="true"
+          ><path
+            d="M3 5h7a3 3 0 0 1 3 3v13a4 4 0 0 0-4-3H3zM13 8a3 3 0 0 1 3-3h5v13h-4a4 4 0 0 0-4 3"
+          /></svg
+        >Document</button
+      >
+      <button
+        class:selected={mode === "source"}
+        onpointerdown={keepFocus}
+        onclick={() => switchMode("source")}
+        disabled={running >= 0}
+        ><svg viewBox="0 0 24 24" aria-hidden="true"
+          ><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18" /></svg
+        >Source</button
       >
     </div>
     <div
@@ -649,34 +664,6 @@
 
   <div class="workspace">
     <main>
-      <div class="document-toolbar">
-        <div class="view-tabs" aria-label="Document view">
-          <button
-            class:selected={mode === "preview"}
-            onpointerdown={keepFocus}
-            onclick={() => switchMode("preview")}
-            disabled={running >= 0}
-            ><svg viewBox="0 0 24 24" aria-hidden="true"
-              ><path
-                d="M3 5h7a3 3 0 0 1 3 3v13a4 4 0 0 0-4-3H3zM13 8a3 3 0 0 1 3-3h5v13h-4a4 4 0 0 0-4 3"
-              /></svg
-            >Document</button
-          >
-          <button
-            class:selected={mode === "source"}
-            onpointerdown={keepFocus}
-            onclick={() => switchMode("source")}
-            disabled={running >= 0}
-            ><svg viewBox="0 0 24 24" aria-hidden="true"
-              ><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18" /></svg
-            >Source</button
-          >
-        </div>
-        <div class="shortcut">
-          <kbd>⇧</kbd><kbd>↵</kbd><span>Run current block</span>
-        </div>
-      </div>
-
       {#if error}<div class="error-banner" role="alert">
           <span>{error}</span>{#if doc}<button onclick={download}
               >Download current content</button
@@ -747,11 +734,6 @@
               ><span></span>
             </div>
           {/if}
-          <footer class="document-footer">
-            <span>Plain Markdown · IPython runs the code</span><span
-              >{lastRun ? `Last run ${lastRun}` : "Click a block to edit"}</span
-            >
-          </footer>
         {:else if !error}<div class="loading-state">Opening the document…</div>{/if}
       </div>
       <div class="statusbar">
