@@ -10,7 +10,6 @@ from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import browser, sessions
 from . import paths as local_paths
@@ -93,9 +92,6 @@ def _document_app(
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.token = session_token
-    app.add_middleware(
-        TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"]
-    )
 
     def authorize(authorization: str = Header(default="")):
         if not secrets.compare_digest(authorization, f"Bearer {session_token}"):
@@ -332,9 +328,6 @@ def create_app(
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.token = session_token
-    app.add_middleware(
-        TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"]
-    )
 
     def authorize(authorization: str = Header(default="")):
         if not secrets.compare_digest(authorization, f"Bearer {session_token}"):

@@ -65,6 +65,9 @@ IPython runs the code.
 - The session stores its absolute start directory as `cwd`.  
 - This value stays fixed when document code changes a kernel working directory.  
 - Open selects a free port and starts a background service.  
+- The service listens on `0.0.0.0`.  
+- The printed address uses host `0.0.0.0`.  
+- The service accepts any HTTP Host name.  
 - Open returns the shell without opening a browser.  
 - Open prints `(http_address, cwd, file1, file2, ...)`.  
 - The address includes the session access token.  
@@ -228,7 +231,8 @@ uv run imd open
 Use `uv sync` before backend tests and browser e2e tests.  
 `imd open` prints the address, start directory, and document paths, then returns the shell.  
 Open the printed URL in the browser.  
-The service listens only on `127.0.0.1`.  
+The service listens on `0.0.0.0`.  
+The printed address uses host `0.0.0.0`.  
 The printed address includes the access credential for the current session.  
 Use `imd close <port>` to stop one session.  
 

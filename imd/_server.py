@@ -8,6 +8,12 @@ import uvicorn
 from . import sessions
 from .app import STATIC, create_app
 
+LISTEN_HOST = "0.0.0.0"
+
+
+def session_url(port: int, token: str) -> str:
+    return f"http://{LISTEN_HOST}:{port}/#token={token}"
+
 
 def run_server(filename: str | list[str], cwd: Path) -> None:
     if not (STATIC / "index.html").is_file():
@@ -19,9 +25,9 @@ def run_server(filename: str | list[str], cwd: Path) -> None:
     app = create_app(filename, cwd)
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        listener.bind(("127.0.0.1", 0))
+        listener.bind((LISTEN_HOST, 0))
         bound_port = listener.getsockname()[1]
-        url = f"http://127.0.0.1:{bound_port}/#token={app.state.token}"
+        url = session_url(bound_port, app.state.token)
         filenames = [filename] if isinstance(filename, str) else filename
         paths = [str((cwd / name).resolve()) for name in filenames]
         sessions.add_session(paths, url, os.getpid(), cwd)
