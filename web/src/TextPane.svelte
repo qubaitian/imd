@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { followLinks, linkedText } from "./links.js";
 
-  let { base, path, token, onOpenLink } = $props();
+  let { base, path, token, paneId, onOpenLink } = $props();
   let source = $state("");
   let error = $state("");
 
@@ -24,7 +24,7 @@
   });
 </script>
 
-<section class="app-shell text-pane" aria-label={path}>
+<section class="app-shell text-pane" data-panel-id={paneId} aria-label={path}>
   <header class="topbar">
     <div class="breadcrumb"><span>{path.split("/").pop()}</span></div>
     <span class="readonly-label">Read-only</span>

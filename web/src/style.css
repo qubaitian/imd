@@ -725,6 +725,37 @@ main {
 .session-layout > .app-shell + .app-shell {
   border-left: 1px solid #dfe3e8;
 }
+.session-layout:has(> .app-shell + .app-shell) .topbar {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.session-layout[aria-busy="true"] .topbar {
+  cursor: progress;
+}
+.panel-sorting,
+.panel-sorting * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+.panel-dragging {
+  opacity: 0.65;
+}
+.panel-insertion {
+  position: fixed;
+  z-index: 100;
+  width: 3px;
+  transform: translateX(-50%);
+  background: #218bff;
+  pointer-events: none;
+}
+.panel-order-error {
+  position: fixed;
+  z-index: 101;
+  top: 48px;
+  left: 12px;
+  right: 12px;
+}
 @container (max-width: 700px) {
   .topbar {
     padding: 0 14px;

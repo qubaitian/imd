@@ -544,7 +544,7 @@
   {/each}
 {/snippet}
 
-<div class="app-shell" bind:this={pane}>
+<div class="app-shell" data-panel-id={paneId} bind:this={pane}>
   <header class="topbar">
     <div class="breadcrumb">
       <svg viewBox="0 0 24 24" aria-hidden="true"

@@ -202,6 +202,29 @@ def test_nested_document_assets_use_session_path(server, tmp_path):
     assert imd.list()[0].paths == (*entry.paths, str(path))
 
 
+def test_panel_order_updates_cli_and_python_session_paths(server, tmp_path):
+    client, _ = server
+    entry = imd.open()
+    path = tmp_path / "second.md"
+    path.write_text("# Second\n")
+    prefix = f"/{entry.number}"
+    client.post(prefix + "/api/paths/open", headers=headers(entry), json={"path": str(path)})
+    documents = client.get(prefix + "/api/session", headers=headers(entry)).json()["documents"]
+    response = client.put(
+        prefix + "/api/session/order",
+        headers=headers(entry),
+        json={"ids": [item["id"] for item in reversed(documents)]},
+    )
+    assert response.status_code == 200
+    expected = (str(path), *entry.paths)
+    assert imd.list()[0].paths == expected
+    result = subprocess.run(
+        [sys.executable, "-m", "imd.cli", "list"],
+        capture_output=True, text=True, check=True,
+    )
+    assert sessions.parse_entry(result.stdout.strip())[2:] == expected
+
+
 def test_stopped_service_does_not_block_a_new_open(server):
     entry = imd.open()
     pid = json.loads(sessions.SESSIONS_FILE.read_text())[0]["pid"]

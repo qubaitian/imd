@@ -6,6 +6,15 @@ Svelte 提供界面。
 CodeMirror 提供编辑器。  
 每个 document 使用带 PTY 的持久 shell。  
 
+## Design
+
+保持 Python API 和 CLI 同构。  
+两个接口提供相同的 session operation。  
+两个接口使用相同的 operation name。  
+两个接口使用相同的 argument 和行为。  
+两个接口返回相同的 session 信息。  
+每一次 session interface 变更都应用到两个接口。  
+
 ## Scope
 
 IMD 支持 Unix 和 macOS。  
@@ -92,6 +101,18 @@ Panel 等宽，没有 panel 数量上限，也没有关闭或调整宽度的控�
 在同一 session 内，同一 file 的 panel 共用一个 document 和 shell。  
 每个 panel 保留自己的未保存 draft。  
 不同 document 使用不同的 shell。  
+
+拖动 panel 标题栏里的 file name 或空白处，可以向左或向右移动整个 panel。  
+标题栏里的按钮继续处理点击。  
+拖动时，一条线标记插入位置。  
+松开指针后，panel 移到该位置。  
+Panel 移动时保留 draft、view、滚动位置和正在运行的代码。  
+同一 file 重复打开的 panel 各有固定标识。  
+Session 保存 panel 顺序。  
+刷新页面后恢复该顺序。  
+CLI 和 Python API 的 session path 使用该顺序。  
+新 panel 仍在右端打开。  
+拖动不跨 file 移动内容，也不跨浏览器 window 移动 panel。  
 
 后缀为 `.md` 或 `.markdown` 的 file 支持编辑和执行。  
 其他 UTF-8 文本 file 显示只读文本，并带 Read-only 标签。  
@@ -247,7 +268,7 @@ Document file 仍留在磁盘上。
 从项目 directory 安装该 tool：  
 
 ```sh
-uv tool install .
+uv tool install --reinstall  .
 ```
 
 每次 wheel build 都会安装 frontend dependency，并用 npm rebuild frontend。  

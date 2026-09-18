@@ -71,6 +71,10 @@ class PathRequest(BaseModel):
     path: str
 
 
+class PanelOrderRequest(BaseModel):
+    ids: list[str]
+
+
 def _document_app(
     filename: str | None, cwd: Path, token: str, base: str, readonly: bool = False
 ) -> FastAPI:
@@ -302,7 +306,11 @@ def create_app(
             raise ValueError("Each path must refer to a file.")
     session_token = token or secrets.token_urlsafe(32)
     documents = [
-        {"path": path, "base": "" if index == 0 else f"/documents/{index}"}
+        {
+            "id": secrets.token_hex(16),
+            "path": path,
+            "base": "" if index == 0 else f"/documents/{index}",
+        }
         for index, path in enumerate(paths)
     ]
     children = [
@@ -331,6 +339,24 @@ def create_app(
     def read_session():
         return {"documents": documents, "cwd": str(cwd)}
 
+    @app.put("/api/session/order", dependencies=[Depends(authorize)])
+    async def reorder_panels(request: PanelOrderRequest):
+        async with document_lock:
+            panels = {item["id"]: item for item in documents}
+            if len(request.ids) != len(panels) or set(request.ids) != set(panels):
+                raise HTTPException(
+                    409, "The open panels changed. Reload before moving a panel."
+                )
+            ordered = [panels[panel_id] for panel_id in request.ids]
+            try:
+                await asyncio.to_thread(
+                    sessions.update_paths, session_token, [item["path"] for item in ordered]
+                )
+            except OSError as exc:
+                raise HTTPException(503, "Cannot save panel order.") from exc
+            documents[:] = ordered
+            return {"documents": documents}
+
     @app.post("/api/paths/open", dependencies=[Depends(authorize)])
     async def open_path(request: PathRequest):
         try:
@@ -355,13 +381,14 @@ def create_app(
                     route = app.router.routes.pop()
                     app.router.routes.insert(app.router.routes.index(root_mount), route)
                     opened[str(path)] = item
-                documents.append(item)
+                panel = {**item, "id": secrets.token_hex(16)}
                 await asyncio.to_thread(
                     sessions.update_paths,
                     session_token,
-                    [entry["path"] for entry in documents],
+                    [entry["path"] for entry in [*documents, panel]],
                 )
-                return {"document": item}
+                documents.append(panel)
+                return {"document": panel}
         except FileNotFoundError as exc:
             raise HTTPException(404, "The path does not exist.") from exc
         except (ValueError, OSError) as exc:

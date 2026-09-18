@@ -104,6 +104,18 @@ Within a session, panels for the same file share one document and shell.
 Each panel keeps its own unsaved draft.  
 Different documents have separate shells.  
 
+Drag the file name or empty space in a panel title bar to move the whole panel left or right.  
+Title bar buttons keep their click behavior.  
+A line marks the insertion position during a drag.  
+Release the pointer to move the panel.  
+Each panel keeps its draft, view, scroll position, and running code when it moves.  
+Repeated panels for the same file have separate identities.  
+The session saves panel order.  
+Reloading the page restores that order.  
+CLI and Python API session paths follow that order.  
+New panels still open at the right end.  
+Dragging does not move content between files or panels between browser windows.  
+
 Files with `.md` or `.markdown` suffixes support editing and execution.  
 Other UTF-8 text files show read-only text with a Read-only label.  
 Binary files and missing paths report an error.  
@@ -258,7 +270,7 @@ The project needs Python 3.11 or later, uv, and Node.js 22.12 or later for the f
 Install the tool from the project directory:  
 
 ```sh
-uv tool install .
+uv tool install --reinstall  .
 ```
 
 Each wheel build installs frontend dependencies and rebuilds the frontend with npm.  
