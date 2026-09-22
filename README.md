@@ -1,6 +1,6 @@
 # IMD — Interactive Markdown
 
-## term
+## glossary
 
 **IMD**:
 IMD is a Markdown editor with command execution on the browser.  
