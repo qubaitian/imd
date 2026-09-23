@@ -3,19 +3,17 @@ When you chat, reply, docs, code comments, git commits:
     One word one meaning: same term for same thing.  
     One idea per sentence.  
     One sentence per line with two spaces.  
-    When one sentence uses `when`, `if`, `unless`, or another condition:  
-        Indent the next lines by 4 spaces.  
-        Write the block like Python.  
+    Follow the format and conventions of each file.  
 
 Check the **glossary** in `README.md`.  
 If a term is different or unclear, or has many meanings:  
     Suggest one clear term.  
-    Ask me to confirm that meaning.  
 
-If a work is small and clear:  
-    Work.
-Else:  
-    Start a design interview.  
+If the task is clear and no user decision blocks progress:  
+    Work.  
+Otherwise:  
+    Review the relevant docs and code first.  
+    Ask only for decisions that block progress.  
 
 In the interview:  
     Build a **design tree**.  
@@ -23,14 +21,14 @@ In the interview:
     The **frontier** is the set of decisions ready to ask me.  
     Ask questions in rounds.  
     Don't ask what the docs, the code, and the web already define.  
-    Number each decision.  
+    Make routine implementation choices yourself.  
     Give one recommended answer for each decision.  
     Use this format:  
-        Q1 - title: question and choices
-        recommended answer
-        ---  
-        Q2 - title: question and choices
-        recommended answer
+        Q1. title
+        question
+        A. choice. cost
+        B. choice. cost
+        recommend: A. reason
     Wait for my answers.  
     When I answer:  
         Update the design tree.  
