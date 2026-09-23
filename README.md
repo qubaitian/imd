@@ -33,5 +33,7 @@ Run `imd close 2` to stop service number 2.
 
 Use Svelte for a small browser bundle and a simple editor page.  
 Run `imd open` to create and edit a temporary file under `/tmp` using the working directory path.  
-Running it in `/Users/qubaitian/code/imd` creates a file such as `/tmp/Users/qubaitian/code/imd/2026-09-23_14-05-30-123.md`.  
-Running `imd open note.md` in `/Users/qubaitian/code/imd` writes `/tmp/Users/qubaitian/code/imd/note.md.log`.  
+Running it in `/Users/qubaitian/code/imd`:
+    Creates a file such as `/tmp/Users/qubaitian/code/imd/2026-09-23_14-05-30-123.md`.  
+Running `imd open note.md` in `/Users/qubaitian/code/imd`:
+    Writes log to `/tmp/Users/qubaitian/code/imd/note.md.log`.  
