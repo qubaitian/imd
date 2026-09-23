@@ -14,9 +14,13 @@ function timestamp(date: Date) {
   return local.toISOString().slice(0, 23).replace('T', '_').replace(/[:.]/g, '-');
 }
 
-async function createTempFile(cwd: string, tempRoot: string) {
+export function tempDirFor(cwd: string, tempRoot: string) {
   const absoluteCwd = path.resolve(cwd);
-  const tempDir = path.join(tempRoot, path.relative(path.parse(absoluteCwd).root, absoluteCwd));
+  return path.join(tempRoot, path.relative(path.parse(absoluteCwd).root, absoluteCwd));
+}
+
+async function createTempFile(cwd: string, tempRoot: string) {
+  const tempDir = tempDirFor(cwd, tempRoot);
   await mkdir(tempDir, { recursive: true });
   for (;;) {
     const filePath = path.join(tempDir, `${timestamp(new Date())}.md`);

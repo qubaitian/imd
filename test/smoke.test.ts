@@ -1,45 +1,55 @@
 import assert from 'node:assert/strict';
-import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 const imd = fileURLToPath(new URL('../bin/imd.ts', import.meta.url));
+const run = promisify(execFile);
 
-function waitForUrl(child: ChildProcessWithoutNullStreams) {
-  return new Promise<string>((resolve, reject) => {
-    let output = '';
-    child.stdout.on('data', chunk => {
-      output += chunk;
-      const match = output.match(/Open (http\S+)/);
-      if (match) resolve(match[1]);
-    });
-    child.once('exit', code => reject(new Error(`imd exited with ${code}.`)));
-  });
-}
+test(
+  'imd opens, lists, and closes background services',
+  { skip: process.platform === 'win32', timeout: 10000 },
+  async () => {
+    const dir = await realpath(await mkdtemp(path.join(tmpdir(), 'imd-smoke-')));
+    const tempDir = path.join('/tmp', dir);
+    const browser = process.platform === 'darwin' ? 'open' : 'xdg-open';
+    await writeFile(path.join(dir, browser), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    const env = { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH}` };
+    const imdRun = async (...args: string[]) => (await run(process.execPath, [imd, ...args], { cwd: dir, env })).stdout;
+    const ownNumbers = async () =>
+      (await imdRun('list'))
+        .split('\n')
+        .filter(line => line.includes(dir))
+        .map(line => line.split(' ')[0]);
 
-test('imd open serves and saves a file', { skip: process.platform === 'win32', timeout: 5000 }, async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'imd-smoke-'));
-  const browser = process.platform === 'darwin' ? 'open' : 'xdg-open';
-  await writeFile(path.join(dir, browser), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-  const child = spawn(process.execPath, [imd, 'open', 'note.md'], {
-    cwd: dir,
-    env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH}` },
-  });
+    try {
+      const opened = await imdRun('open', 'note.md');
+      const url = new URL(opened.match(/Open (http\S+)/)![1]);
+      const saved = await fetch(new URL('/api/document', url), {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${url.hash.slice(1)}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '# Smoke\n' }),
+      });
+      assert.equal(saved.status, 204);
+      assert.equal(await readFile(path.join(dir, 'note.md'), 'utf8'), '# Smoke\n');
+      assert.ok(existsSync(path.join(tempDir, 'note.md.log')));
 
-  try {
-    const url = new URL(await waitForUrl(child));
-    const saved = await fetch(new URL('/api/document', url), {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${url.hash.slice(1)}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: '# Smoke\n' }),
-    });
-    assert.equal(saved.status, 204);
-    assert.equal(await readFile(path.join(dir, 'note.md'), 'utf8'), '# Smoke\n');
-  } finally {
-    child.kill('SIGKILL');
-    await rm(dir, { recursive: true, force: true });
-  }
-});
+      assert.ok((await imdRun('open', 'note.md')).includes(`Open ${url.href}`));
+      await imdRun('open');
+      assert.equal((await ownNumbers()).length, 2);
+
+      for (const number of (await ownNumbers()).reverse()) await imdRun('close', number);
+      assert.deepEqual(await ownNumbers(), []);
+      await assert.rejects(fetch(url));
+    } finally {
+      for (const number of (await ownNumbers().catch(() => [])).reverse()) await imdRun('close', number);
+      await rm(dir, { recursive: true, force: true });
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  },
+);

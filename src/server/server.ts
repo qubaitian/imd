@@ -23,7 +23,9 @@ export async function startEditor({
     .use('/api/*', bearerAuth({ token }))
     .get('/api/document', async c => c.json({ path: document.path, content: await document.read() }))
     .put('/api/document', async c => {
-      const { content } = await c.req.json();
+      const body = await c.req.json().catch(() => undefined);
+      if (body === undefined) return c.json({ error: 'Body must be JSON.' }, 400);
+      const content = body?.content;
       if (typeof content !== 'string') return c.json({ error: 'Content must be a string.' }, 400);
       await document.save(content);
       return c.body(null, 204);

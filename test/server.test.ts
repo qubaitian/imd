@@ -71,10 +71,12 @@ test('PUT saves the content', async () => {
 
 test('PUT rejects content that is not a string', async () => {
   assert.equal((await put(JSON.stringify({ content: 1 }))).status, 400);
+  assert.equal((await put('null')).status, 400);
   assert.deepEqual(saved, []);
 });
 
-test('an unexpected error returns 500 and the server keeps running', async () => {
-  assert.equal((await put('not json')).status, 500);
+test('PUT rejects a body that is not JSON and the server keeps running', async () => {
+  assert.equal((await put('not json')).status, 400);
+  assert.deepEqual(saved, []);
   assert.equal((await fetch(`${base}/api/document`, { headers })).status, 200);
 });
