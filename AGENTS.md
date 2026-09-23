@@ -17,13 +17,7 @@ Use **Test-Driven Development**.
 Use **Conventional Commits** for commit messages.  
 Use **Conventional Branch Name**.  
 
-If the task is clear and no decision blocks:  
-    Work.  
-Otherwise:  
-    Review the relevant docs and code first.  
-    Ask only for decisions that block progress.  
-
-In the interview:  
+Interview before work:  
     Build a **design tree**.  
     A **decision** is a choice only I can make.  
     The **frontier** is the set of decisions ready to ask me.  
@@ -48,6 +42,7 @@ In the interview:
 After the interview:  
     update the **glossary** in `README.md`:  
         Define each term in one sentence.  
+        Define what it IS, not what it does.
         Keep terms from the same area together.  
         Put a term before any term that uses it.  
     Update the **ADR** section in `README.md`:   
