@@ -80,3 +80,37 @@ test('PUT rejects a body that is not JSON and the server keeps running', async (
   assert.deepEqual(saved, []);
   assert.equal((await fetch(`${base}/api/document`, { headers })).status, 200);
 });
+
+async function connect(token: string) {
+  const socket = new WebSocket(`${base.replace('http', 'ws')}/shell`);
+  const messages: { type: string; [key: string]: unknown }[] = [];
+  socket.addEventListener('message', event => messages.push(JSON.parse(String(event.data))));
+  await new Promise((resolve, reject) => {
+    socket.addEventListener('open', resolve, { once: true });
+    socket.addEventListener('error', reject, { once: true });
+  });
+  socket.send(JSON.stringify({ type: 'auth', token }));
+  return { socket, messages };
+}
+
+test(
+  'a shell run over the WebSocket streams data and ends with done',
+  { skip: process.platform === 'win32' },
+  async () => {
+    const { socket, messages } = await connect(headers.Authorization.slice('Bearer '.length));
+    socket.send(JSON.stringify({ type: 'run', runId: 'r1', code: 'echo hi' }));
+    await new Promise<void>(resolve =>
+      socket.addEventListener('message', () => messages.at(-1)?.type === 'done' && resolve()),
+    );
+    socket.close();
+    assert.ok(messages.some(message => message.type === 'data' && message.runId === 'r1'));
+    assert.deepEqual(messages.at(-1), { type: 'done', runId: 'r1', output: 'hi', exitCode: 0, reason: 'done' });
+  },
+);
+
+test('the WebSocket closes on a wrong token', async () => {
+  const { socket, messages } = await connect('wrong');
+  socket.send(JSON.stringify({ type: 'run', runId: 'r1', code: 'echo hi' }));
+  await new Promise(resolve => socket.addEventListener('close', resolve, { once: true }));
+  assert.deepEqual(messages, []);
+});
