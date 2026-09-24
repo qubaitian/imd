@@ -29,7 +29,6 @@
   const token = window.location.hash.slice(1);
   const headers = { Authorization: `Bearer ${token}` };
   const shell = connectShell(token);
-  const segments = $derived(splitSegments(content, agents));
   const status = $derived(loading ? 'Loading…' : content === savedContent ? 'Saved' : 'Unsaved changes');
   const render = (markdown: string) => DOMPurify.sanitize(marked.parse(markdown, { async: false }) as string);
 
@@ -99,13 +98,13 @@
   }
 
   async function run(index: number) {
-    const block = findCodeBlocks(content)[index];
+    const block = findCodeBlocks(content, agents)[index];
     if (!block || running) return;
     void save();
     const runId = crypto.randomUUID();
     running = { index, runId };
     const result = await shell.run(runId, block.info, block.code);
-    const blocks = findCodeBlocks(content);
+    const blocks = findCodeBlocks(content, agents);
     const target = blocks[index]?.code === block.code ? index : blocks.findIndex(other => other.code === block.code);
     running = undefined;
     if (target >= 0) edit(setOutput(content, target, outputText(result), agents));
@@ -114,7 +113,7 @@
   function runAtCursor(event: KeyboardEvent) {
     if (event.key !== 'Enter' || !event.shiftKey) return;
     const at = textarea.selectionStart;
-    const index = findCodeBlocks(content).findIndex(block => block.start <= at && at <= block.end);
+    const index = findCodeBlocks(content, agents).findIndex(block => block.start <= at && at <= block.end);
     if (index < 0) return;
     event.preventDefault();
     show('preview');
@@ -123,7 +122,7 @@
 
   function addBlock() {
     content = addCodeBlock(content);
-    focusIndex = findCodeBlocks(content).length - 1;
+    focusIndex = findCodeBlocks(content, agents).length - 1;
     void save();
   }
 </script>
@@ -156,27 +155,32 @@
     </section>
     <section class="pane" aria-label="Markdown preview" hidden={view !== 'preview'}>
       <article class="markdown-body">
-        {#each segments as segment, i (segment.kind === 'code' ? `code-${segment.index}` : `markdown-${i}`)}
-          {#if segment.kind === 'code'}
-            <CodeBlock
-              block={segment.block}
-              runId={running?.index === segment.index ? running.runId : undefined}
-              busy={running !== undefined}
-              focus={focusIndex === segment.index}
-              {shell}
-              onCode={code => (content = setCode(content, segment.index, code))}
-              onSave={save}
-              onRun={() => run(segment.index)}
-              onStop={shell.stop}
-              onDelete={() => edit(deleteBlock(content, segment.index))}
-              onDeleteOutput={() => edit(deleteOutput(content, segment.index))}
-              onFocused={() => (focusIndex = undefined)}
-            />
-          {:else}
-            <!-- eslint-disable-next-line svelte/no-at-html-tags -- preview is sanitized by DOMPurify -->
-            {@html render(segment.text)}
-          {/if}
-        {/each}
+        {#snippet renderSegments(parent: number | undefined)}
+          {#each splitSegments(content, agents, parent) as segment, i (segment.kind === 'code' ? `code-${segment.index}` : `markdown-${i}`)}
+            {#if segment.kind === 'code'}
+              <CodeBlock
+                block={segment.block}
+                runId={running?.index === segment.index ? running.runId : undefined}
+                busy={running !== undefined}
+                focus={focusIndex === segment.index}
+                {shell}
+                onCode={code => (content = setCode(content, segment.index, code, agents))}
+                onSave={save}
+                onRun={() => run(segment.index)}
+                onStop={shell.stop}
+                onDelete={() => edit(deleteBlock(content, segment.index, agents))}
+                onDeleteOutput={() => edit(deleteOutput(content, segment.index, agents))}
+                onFocused={() => (focusIndex = undefined)}
+              >
+                {@render renderSegments(segment.index)}
+              </CodeBlock>
+            {:else}
+              <!-- eslint-disable-next-line svelte/no-at-html-tags -- preview is sanitized by DOMPurify -->
+              {@html render(segment.text)}
+            {/if}
+          {/each}
+        {/snippet}
+        {@render renderSegments(undefined)}
         <button type="button" class="block-button add-block" onclick={addBlock} disabled={loading}>+ code block</button>
       </article>
     </section>

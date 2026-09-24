@@ -82,9 +82,69 @@ test('setOutput makes the txt fence longer than any backticks in the output', ()
   assert.equal(blocks[0].output?.text, '```js\nx\n```');
 });
 
-test('it skips code blocks inside Markdown output', () => {
-  const next = setOutput(`${fence}sh md\ncat a.md\n${fence}\n`, 0, '```sh\nrm -rf /\n```');
-  assert.equal(findCodeBlocks(next).length, 1);
+test('Markdown output contains runnable code blocks at any depth', () => {
+  const root = setOutput(`${fence}sh md\necho root\n${fence}\n`, 0, 'before\n\n```sh md\necho child\n```\n\nafter');
+  assert.deepEqual(
+    findCodeBlocks(root).map(block => block.code),
+    ['echo root', 'echo child'],
+  );
+  assert.deepEqual(
+    splitSegments(root).map(segment => segment.kind),
+    ['code', 'markdown'],
+  );
+  assert.deepEqual(
+    splitSegments(root, [], 0).map(segment => segment.kind),
+    ['markdown', 'code', 'markdown'],
+  );
+
+  const child = setOutput(root, 1, '```sh\necho grandchild\n```');
+  assert.deepEqual(
+    findCodeBlocks(child).map(block => block.code),
+    ['echo root', 'echo child', 'echo grandchild'],
+  );
+  assert.deepEqual(
+    splitSegments(child, [], 1).map(segment => segment.kind),
+    ['code', 'markdown'],
+  );
+  assert.equal(findCodeBlocks(child)[0].output?.text.includes('echo grandchild'), true);
+
+  const edited = setCode(child, 2, 'pwd');
+  assert.equal(findCodeBlocks(edited)[2].code, 'pwd');
+  assert.deepEqual(
+    findCodeBlocks(deleteBlock(edited, 2)).map(block => block.code),
+    ['echo root', 'echo child'],
+  );
+  assert.deepEqual(
+    findCodeBlocks(deleteOutput(child, 1)).map(block => block.code),
+    ['echo root', 'echo child'],
+  );
+  assert.deepEqual(
+    findCodeBlocks(setOutput(child, 0, 'replacement')).map(block => block.code),
+    ['echo root'],
+  );
+});
+
+test('txt output stays literal even when it contains a code fence', () => {
+  const md = setOutput(`${fence}sh\necho root\n${fence}\n`, 0, '```sh\necho example\n```');
+  assert.deepEqual(
+    findCodeBlocks(md).map(block => block.code),
+    ['echo root'],
+  );
+});
+
+test('a code block inside agent output can be edited and removed', () => {
+  const agents = ['codex'];
+  const md = setOutput(`${fence}codex\nwrite a command\n${fence}\n`, 0, '```sh\necho first\n```', agents);
+  assert.deepEqual(
+    findCodeBlocks(md, agents).map(block => block.code),
+    ['write a command', 'echo first'],
+  );
+  const edited = setCode(md, 1, 'echo second', agents);
+  assert.equal(findCodeBlocks(edited, agents)[1].code, 'echo second');
+  assert.deepEqual(
+    findCodeBlocks(deleteBlock(edited, 1, agents), agents).map(block => block.code),
+    ['write a command'],
+  );
 });
 
 test('an output block that is not right after a code block is not linked', () => {

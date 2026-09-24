@@ -2,8 +2,7 @@
   import { FitAddon } from '@xterm/addon-fit';
   import { Terminal } from '@xterm/xterm';
   import '@xterm/xterm/css/xterm.css';
-  import DOMPurify from 'dompurify';
-  import { marked } from 'marked';
+  import type { Snippet } from 'svelte';
   import type { CodeBlock } from '../shared/blocks.ts';
   import type { ShellClient } from './shell.ts';
 
@@ -20,6 +19,7 @@
     onDelete,
     onDeleteOutput,
     onFocused,
+    children,
   }: {
     block: CodeBlock;
     runId: string | undefined;
@@ -33,6 +33,7 @@
     onDelete: () => void;
     onDeleteOutput: () => void;
     onFocused: () => void;
+    children?: Snippet;
   } = $props();
 
   let codeField: HTMLTextAreaElement;
@@ -48,12 +49,6 @@
     event.preventDefault();
     if (!busy) onRun();
   }
-
-  const outputHtml = $derived(
-    block.markdown && block.output
-      ? DOMPurify.sanitize(marked.parse(block.output.text, { async: false }) as string)
-      : '',
-  );
 
   function terminal(node: HTMLElement, id: string) {
     const term = new Terminal({
@@ -112,8 +107,7 @@
         <button type="button" class="block-button" onclick={onDeleteOutput}>del</button>
       </div>
       {#if block.markdown}
-        <!-- eslint-disable-next-line svelte/no-at-html-tags -- output is sanitized by DOMPurify -->
-        <div class="output-markdown">{@html outputHtml}</div>
+        <div class="output-markdown">{@render children?.()}</div>
       {:else}
         <pre><code>{block.output.text}</code></pre>
       {/if}

@@ -26,7 +26,7 @@ _Avoid_: id, pid
 The file that holds the output of one service.  
 
 **Code block**:
-A fenced block of shell text at the top level of the Markdown file.  
+A fenced block of command or agent input in the Markdown file or a Markdown output block.  
 _Avoid_: cell, snippet
 
 **Agent**:
@@ -63,6 +63,8 @@ Click + code block at the end of the preview to add an empty code block.
 Click stop to stop the run.  
 Click del on a code block to delete it and its output block.  
 Click del on an output block to delete only the output block.  
+Run a code block inside a Markdown output block the same way as any other code block.  
+Code blocks inside `txt` output blocks are plain text.  
 Type into the terminal under a running code block to answer its prompts.  
 Write ```` ```sh md ```` to put the output in the file as Markdown.  
 Other code blocks get their output in a `txt` fence:
@@ -123,6 +125,9 @@ Let the browser write the output block into the Markdown, and let the service on
 This keeps the textarea as the only writer of the file.  
 Link an output block to its code block by position, right after the fence, and not by a stored ID.  
 The ID only pairs the begin and end markers.  
+Allow code blocks in Markdown output blocks at any depth, because generated Markdown may contain commands to run next.  
+Treat `txt` output blocks as plain text, because command output may contain code fences.  
+Replace a code block's whole output block on each run, including any nested code blocks.  
 Use the `ws` package with `upgradeWebSocket` from `@hono/node-server`, because `@hono/node-ws` does not support `@hono/node-server` v2.  
 Send the token as the first WebSocket message, because a browser cannot set headers on a WebSocket.  
 Run `chmod +x` on the `node-pty` spawn helper after install, because its npm package ships the helper without the execute bit.  
@@ -135,4 +140,3 @@ Send agent logs on stderr to a log file with `2>>` in the command, so they stay 
 IMD has no built-in agents, because model names in the commands change often.  
 IMD reads the agent config on each run, so a change applies without a restart.  
 A broken agent config fails every run, because IMD cannot tell an agent block from shell code.  
-

@@ -3,6 +3,8 @@ import { marked, type Token } from 'marked';
 export interface OutputBlock {
   start: number;
   end: number;
+  bodyStart: number;
+  bodyEnd: number;
   id: string;
   text: string;
 }
@@ -13,6 +15,7 @@ export interface CodeBlock {
   info: string;
   code: string;
   markdown: boolean;
+  parent?: number;
   output?: OutputBlock;
 }
 
@@ -45,38 +48,60 @@ const markerId = (item: Located | undefined, pattern: RegExp) =>
 export function findCodeBlocks(md: string, agents: string[] = []): CodeBlock[] {
   const items = locate(md);
   const blocks: CodeBlock[] = [];
-  for (let i = 0; i < items.length; i++) {
-    const { token, start, end } = items[i];
-    const beginId = markerId(items[i], beginPattern);
-    if (beginId !== undefined) {
-      const close = items.findIndex((item, j) => j > i && markerId(item, endPattern) === beginId);
-      if (close > i) i = close;
-      continue;
+
+  function matchingEnd(begin: number, limit: number) {
+    const ids = [markerId(items[begin], beginPattern)];
+    for (let j = begin + 1; j < limit; j++) {
+      const nextId = markerId(items[j], beginPattern);
+      if (nextId !== undefined) ids.push(nextId);
+      const endId = markerId(items[j], endPattern);
+      if (endId === ids.at(-1)) {
+        ids.pop();
+        if (ids.length === 0) return j;
+      }
     }
-    if (token.type !== 'code' || token.codeBlockStyle === 'indented') continue;
-    const info = (token.lang ?? '').trim();
-    const [name, ...words] = info.split(/\s+/);
-    const block: CodeBlock = {
-      start,
-      end,
-      info,
-      code: token.text,
-      markdown: words.includes('md') || agents.includes(name),
-    };
-    const next = items[i + 1];
-    const id = markerId(next, beginPattern);
-    const close = items.findIndex((item, j) => j > i + 1 && markerId(item, endPattern) === id);
-    if (id !== undefined && close > 0 && md.slice(end, next.start).trim() === '') {
-      const inner = items.slice(i + 2, close);
-      const text =
-        !block.markdown && inner.length === 1 && inner[0].token.type === 'code'
-          ? inner[0].token.text
-          : md.slice(next.start + next.token.raw.length, items[close].start).trim();
-      block.output = { start: next.start, end: items[close].end, id, text };
-      i = close;
-    }
-    blocks.push(block);
+    return -1;
   }
+
+  function scan(first: number, limit: number, parent?: number) {
+    for (let i = first; i < limit; i++) {
+      const { token, start, end } = items[i];
+      if (markerId(items[i], beginPattern) !== undefined) {
+        const close = matchingEnd(i, limit);
+        if (close > i) i = close;
+        continue;
+      }
+      if (token.type !== 'code' || token.codeBlockStyle === 'indented') continue;
+      const info = (token.lang ?? '').trim();
+      const [name, ...words] = info.split(/\s+/);
+      const block: CodeBlock = {
+        start,
+        end,
+        info,
+        code: token.text,
+        markdown: words.includes('md') || agents.includes(name),
+        parent,
+      };
+      const index = blocks.push(block) - 1;
+      const next = items[i + 1];
+      const id = markerId(next, beginPattern);
+      const close = id === undefined ? -1 : matchingEnd(i + 1, limit);
+      if (id !== undefined && close > i && md.slice(end, next.start).trim() === '') {
+        const inner = items.slice(i + 2, close);
+        const bodyStart = next.start + next.token.raw.length;
+        const bodyEnd = items[close].start;
+        const text =
+          !block.markdown && inner.length === 1 && inner[0].token.type === 'code'
+            ? inner[0].token.text
+            : md.slice(bodyStart, bodyEnd).trim();
+        block.output = { start: next.start, end: items[close].end, bodyStart, bodyEnd, id, text };
+        if (block.markdown) scan(i + 2, close, index);
+        i = close;
+      }
+    }
+  }
+
+  scan(0, items.length);
   return blocks;
 }
 
@@ -103,21 +128,21 @@ export function setOutput(md: string, index: number, text: string, agents: strin
   return `${md.slice(0, block.end)}\n\n${output}${md.slice(block.end)}`;
 }
 
-export function deleteOutput(md: string, index: number) {
-  const block = findCodeBlocks(md)[index];
+export function deleteOutput(md: string, index: number, agents: string[] = []) {
+  const block = findCodeBlocks(md, agents)[index];
   if (!block?.output) return md;
   return md.slice(0, block.end) + md.slice(block.output.end);
 }
 
-export function deleteBlock(md: string, index: number) {
-  const block = findCodeBlocks(md)[index];
+export function deleteBlock(md: string, index: number, agents: string[] = []) {
+  const block = findCodeBlocks(md, agents)[index];
   if (!block) return md;
   const rest = md.slice(block.output?.end ?? block.end).replace(/^\n+/, '');
   return rest === '' ? md.slice(0, block.start).replace(/\n+$/, '\n') : md.slice(0, block.start) + rest;
 }
 
-export function setCode(md: string, index: number, code: string) {
-  const block = findCodeBlocks(md)[index];
+export function setCode(md: string, index: number, code: string, agents: string[] = []) {
+  const block = findCodeBlocks(md, agents)[index];
   if (!block) return md;
   const lineEnd = md.indexOf('\n', block.start);
   const [, indent, marks, rest] = md
@@ -134,14 +159,20 @@ export function addCodeBlock(md: string) {
   return `${before}${before === '' ? '' : '\n\n'}\`\`\`sh\n\`\`\`\n`;
 }
 
-export function splitSegments(md: string, agents: string[] = []): Segment[] {
+export function splitSegments(md: string, agents: string[] = [], parent?: number): Segment[] {
   const segments: Segment[] = [];
-  let cursor = 0;
-  findCodeBlocks(md, agents).forEach((block, index) => {
+  const blocks = findCodeBlocks(md, agents);
+  const output = parent === undefined ? undefined : blocks[parent]?.output;
+  if (parent !== undefined && !output) return segments;
+  const start = output?.bodyStart ?? 0;
+  const end = output?.bodyEnd ?? md.length;
+  let cursor = start;
+  blocks.forEach((block, index) => {
+    if (block.parent !== parent) return;
     if (block.start > cursor) segments.push({ kind: 'markdown', text: md.slice(cursor, block.start) });
     segments.push({ kind: 'code', index, block });
     cursor = block.output?.end ?? block.end;
   });
-  if (cursor < md.length) segments.push({ kind: 'markdown', text: md.slice(cursor) });
+  if (cursor < end) segments.push({ kind: 'markdown', text: md.slice(cursor, end) });
   return segments;
 }
