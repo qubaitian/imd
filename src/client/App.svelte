@@ -20,6 +20,7 @@
   let content = $state('');
   let savedContent = $state('');
   let loading = $state(true);
+  let agents = $state<string[]>([]);
   let running = $state<{ index: number; runId: string }>();
   let focusIndex = $state<number>();
   let view = $state<View>(localStorage.getItem('imd:view') === 'editor' ? 'editor' : 'preview');
@@ -28,11 +29,14 @@
   const token = window.location.hash.slice(1);
   const headers = { Authorization: `Bearer ${token}` };
   const shell = connectShell(token);
-  const segments = $derived(splitSegments(content));
+  const segments = $derived(splitSegments(content, agents));
   const status = $derived(loading ? 'Loading…' : content === savedContent ? 'Saved' : 'Unsaved changes');
   const render = (markdown: string) => DOMPurify.sanitize(marked.parse(markdown, { async: false }) as string);
 
   onMount(async () => {
+    void fetch('/api/agents', { headers })
+      .then(response => (response.ok ? response.json() : []))
+      .then(names => (agents = names));
     const response = await fetch('/api/document', { headers });
     if (!response.ok) throw new Error(`Could not open the document (${response.status}).`);
     const document: { path: string; content: string } = await response.json();
@@ -100,11 +104,11 @@
     void save();
     const runId = crypto.randomUUID();
     running = { index, runId };
-    const result = await shell.run(runId, block.code);
+    const result = await shell.run(runId, block.info, block.code);
     const blocks = findCodeBlocks(content);
     const target = blocks[index]?.code === block.code ? index : blocks.findIndex(other => other.code === block.code);
     running = undefined;
-    if (target >= 0) edit(setOutput(content, target, outputText(result)));
+    if (target >= 0) edit(setOutput(content, target, outputText(result), agents));
   }
 
   function runAtCursor(event: KeyboardEvent) {

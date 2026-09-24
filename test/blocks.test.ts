@@ -29,6 +29,18 @@ test('only a later word md makes Markdown output', () => {
   assert.equal(markdownLang.markdown, false);
 });
 
+test('an agent block makes Markdown output', () => {
+  const md = `${fence}codex\nhi\n${fence}\n\n${fence}sh\nls\n${fence}\n`;
+  assert.deepEqual(
+    findCodeBlocks(md, ['codex']).map(block => block.markdown),
+    [true, false],
+  );
+  assert.equal(findCodeBlocks(md)[0].markdown, false);
+  assert.match(setOutput(md, 0, '# Answer', ['codex']), /-->\n\n# Answer\n\n<!--/);
+  const segments = splitSegments(md, ['codex']);
+  assert.equal(segments[0].kind === 'code' && segments[0].block.markdown, true);
+});
+
 test('it ignores indented code and code inside lists', () => {
   assert.deepEqual(findCodeBlocks('    ls\n\n- item\n\n  ```\n  ls\n  ```\n'), []);
 });

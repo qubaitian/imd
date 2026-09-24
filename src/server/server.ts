@@ -9,12 +9,13 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { WebSocketServer } from 'ws';
+import { defaultAgentConfig, withAgents, type AgentShell } from './agents.ts';
 import type { Document } from './document.ts';
 import { openShell, type Shell } from './shell.ts';
 
 type ShellMessage =
   | { type: 'auth'; token: string }
-  | { type: 'run'; runId: string; code: string }
+  | { type: 'run'; runId: string; info?: string; code: string }
   | { type: 'input'; data: string }
   | { type: 'stop' }
   | { type: 'resize'; cols: number; rows: number };
@@ -34,18 +35,22 @@ export async function startEditor({
   port = 0,
   cwd = process.cwd(),
   env = process.env,
+  agentConfig = defaultAgentConfig,
 }: {
   document: Document;
   distDir: string;
   port?: number;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  agentConfig?: string;
 }) {
   const token = randomBytes(24).toString('hex');
   const sameToken = (candidate: string) =>
     candidate.length === token.length && timingSafeEqual(Buffer.from(candidate), Buffer.from(token));
   let shell: Promise<Shell> | undefined;
+  let agents: Promise<AgentShell> | undefined;
   const getShell = () => (shell ??= openShell({ cwd, env }));
+  const getAgents = () => (agents ??= getShell().then(opened => withAgents(opened, { configPath: agentConfig })));
 
   function shellSocket() {
     let authed = false;
@@ -65,8 +70,11 @@ export async function startEditor({
         if (message?.type === 'run' && typeof message.code === 'string') {
           const { runId } = message;
           pending++;
-          const result = await current
-            .run(message.code, data => send(ws, { type: 'data', runId, data }))
+          const info = typeof message.info === 'string' ? message.info : '';
+          const result = await (
+            await getAgents()
+          )
+            .run({ info, code: message.code }, data => send(ws, { type: 'data', runId, data }))
             .finally(() => pending--);
           send(ws, { type: 'done', runId, ...result });
         } else if (message?.type === 'input' && typeof message.data === 'string') current.write(message.data);
@@ -83,6 +91,7 @@ export async function startEditor({
   const app = new Hono()
     .use('/api/*', bearerAuth({ token }))
     .get('/api/document', async c => c.json({ path: document.path, content: await document.read() }))
+    .get('/api/agents', async c => c.json(await (await getAgents()).names()))
     .put('/api/document', async c => {
       const body = await c.req.json().catch(() => undefined);
       if (body === undefined) return c.json({ error: 'Body must be JSON.' }, 400);

@@ -49,9 +49,9 @@ export function connectShell(token: string) {
   const send = async (message: object) => (await open()).send(JSON.stringify(message));
 
   return {
-    run(runId: string, code: string) {
+    run(runId: string, info: string, code: string) {
       const done = new Promise<RunResult>(resolve => runs.set(runId, { backlog: [], resolve }));
-      void send({ type: 'run', runId, code });
+      void send({ type: 'run', runId, info, code });
       return done;
     },
     listen(runId: string, listener: (data: string) => void) {

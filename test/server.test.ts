@@ -22,7 +22,9 @@ beforeEach(async () => {
       saved.push(content);
     },
   };
-  editor = await startEditor({ document, distDir });
+  const agentConfig = path.join(distDir, 'agents.json');
+  await writeFile(agentConfig, JSON.stringify({ upper: { start: 'tr a-z A-Z', continue: 'cat' } }));
+  editor = await startEditor({ document, distDir, agentConfig });
   const url = new URL(editor.url);
   base = url.origin;
   headers = { Authorization: `Bearer ${url.hash.slice(1)}` };
@@ -62,6 +64,11 @@ test('the document API needs the token', async () => {
 test('GET returns the document path and content', async () => {
   const response = await fetch(`${base}/api/document`, { headers });
   assert.deepEqual(await response.json(), { path: '/doc.md', content: '# Doc' });
+});
+
+test('GET /api/agents returns the agent names', async () => {
+  assert.equal((await fetch(`${base}/api/agents`)).status, 401);
+  assert.deepEqual(await (await fetch(`${base}/api/agents`, { headers })).json(), ['upper']);
 });
 
 test('PUT saves the content', async () => {
@@ -107,6 +114,16 @@ test(
     assert.deepEqual(messages.at(-1), { type: 'done', runId: 'r1', output: 'hi', exitCode: 0, reason: 'done' });
   },
 );
+
+test('a run with an agent info sends the code to the agent', { skip: process.platform === 'win32' }, async () => {
+  const { socket, messages } = await connect(headers.Authorization.slice('Bearer '.length));
+  socket.send(JSON.stringify({ type: 'run', runId: 'r1', info: 'upper', code: 'hi' }));
+  await new Promise<void>(resolve =>
+    socket.addEventListener('message', () => messages.at(-1)?.type === 'done' && resolve()),
+  );
+  socket.close();
+  assert.deepEqual(messages.at(-1), { type: 'done', runId: 'r1', output: 'HI', exitCode: 0, reason: 'done' });
+});
 
 test('the WebSocket closes on a wrong token', async () => {
   const { socket, messages } = await connect('wrong');

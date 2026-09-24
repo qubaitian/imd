@@ -29,6 +29,17 @@ The file that holds the output of one service.
 A fenced block of shell text at the top level of the Markdown file.  
 _Avoid_: cell, snippet
 
+**Agent**:
+A command-line AI program that reads a prompt on stdin.  
+_Avoid_: bot, model
+
+**Agent config**:
+The file `~/.config/imd/agents.json` that maps each agent name to a start command and a continue command.  
+
+**Agent block**:
+A code block whose first info word is an agent name.  
+_Avoid_: prompt block
+
 **Output block**:
 The text between the `imd:output:begin` and `imd:output:end` markers right after a code block.  
 _Avoid_: result, cell output
@@ -66,6 +77,31 @@ Other code blocks get their output in a `txt` fence:
     ```
     <!-- imd:output:end 3f9a1c -->
 
+Write a prompt in an agent block, such as ```` ```codex ````, and run it to send the prompt to the agent.  
+The first run of an agent in a service uses its start command.  
+Later runs of that agent use its continue command.  
+Agent output goes into the file as Markdown.  
+Put your agents in the agent config:
+
+    {
+      "codex": {
+        "start": "codex exec -m gpt-6-sol -c model_reasoning_effort=high 2>>/tmp/imd/codex.log",
+        "continue": "codex exec resume --last - 2>>/tmp/imd/codex.log"
+      },
+      "opencode": {
+        "start": "opencode run -m 'opencode-go/glm-5.3#high'",
+        "continue": "opencode run -c"
+      },
+      "cursor-agent": {
+        "start": "cursor-agent -f -p --model claude-opus-5-5-medium",
+        "continue": "cursor-agent -f -p --continue"
+      },
+      "pi": {
+        "start": "pi -p --model opencode-go/grok-4.7:high",
+        "continue": "pi -p -c"
+      }
+    }
+
 ## ADR
 
 Use Svelte for a small browser bundle and a simple editor page.  
@@ -90,4 +126,13 @@ The ID only pairs the begin and end markers.
 Use the `ws` package with `upgradeWebSocket` from `@hono/node-server`, because `@hono/node-ws` does not support `@hono/node-server` v2.  
 Send the token as the first WebSocket message, because a browser cannot set headers on a WebSocket.  
 Run `chmod +x` on the `node-pty` spawn helper after install, because its npm package ships the helper without the execute bit.  
+The service remembers which agents have started, and the file does not.  
+An agent counts as started only after a run that exits with 0, so a failed first run starts again.  
+Run an agent as `{ command } < prompt-file` in the shared shell.  
+The braces send the prompt to the whole command, and the prompt gets no shell expansion.  
+Write agent output as Markdown without the `md` word, because agents answer in Markdown.  
+Send agent logs on stderr to a log file with `2>>` in the command, so they stay out of the Markdown.  
+IMD has no built-in agents, because model names in the commands change often.  
+IMD reads the agent config on each run, so a change applies without a restart.  
+A broken agent config fails every run, because IMD cannot tell an agent block from shell code.  
 

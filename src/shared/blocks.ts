@@ -42,7 +42,7 @@ function locate(md: string): Located[] {
 const markerId = (item: Located | undefined, pattern: RegExp) =>
   item?.token.type === 'html' ? item.token.raw.match(pattern)?.[1] : undefined;
 
-export function findCodeBlocks(md: string): CodeBlock[] {
+export function findCodeBlocks(md: string, agents: string[] = []): CodeBlock[] {
   const items = locate(md);
   const blocks: CodeBlock[] = [];
   for (let i = 0; i < items.length; i++) {
@@ -55,12 +55,13 @@ export function findCodeBlocks(md: string): CodeBlock[] {
     }
     if (token.type !== 'code' || token.codeBlockStyle === 'indented') continue;
     const info = (token.lang ?? '').trim();
+    const [name, ...words] = info.split(/\s+/);
     const block: CodeBlock = {
       start,
       end,
       info,
       code: token.text,
-      markdown: info.split(/\s+/).slice(1).includes('md'),
+      markdown: words.includes('md') || agents.includes(name),
     };
     const next = items[i + 1];
     const id = markerId(next, beginPattern);
@@ -94,8 +95,8 @@ function formatOutput(text: string, id: string, markdown: boolean) {
   return `<!-- imd:output:begin ${id} -->\n${inner}\n<!-- imd:output:end ${id} -->`;
 }
 
-export function setOutput(md: string, index: number, text: string) {
-  const block = findCodeBlocks(md)[index];
+export function setOutput(md: string, index: number, text: string, agents: string[] = []) {
+  const block = findCodeBlocks(md, agents)[index];
   if (!block) return md;
   const output = formatOutput(text, block.output?.id ?? newId(), block.markdown);
   if (block.output) return md.slice(0, block.output.start) + output + md.slice(block.output.end);
@@ -133,10 +134,10 @@ export function addCodeBlock(md: string) {
   return `${before}${before === '' ? '' : '\n\n'}\`\`\`sh\n\`\`\`\n`;
 }
 
-export function splitSegments(md: string): Segment[] {
+export function splitSegments(md: string, agents: string[] = []): Segment[] {
   const segments: Segment[] = [];
   let cursor = 0;
-  findCodeBlocks(md).forEach((block, index) => {
+  findCodeBlocks(md, agents).forEach((block, index) => {
     if (block.start > cursor) segments.push({ kind: 'markdown', text: md.slice(cursor, block.start) });
     segments.push({ kind: 'code', index, block });
     cursor = block.output?.end ?? block.end;
