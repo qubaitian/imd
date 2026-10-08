@@ -1,5 +1,6 @@
 """Document access within one local directory."""
 
+import fcntl
 import hashlib
 import os
 import tempfile
@@ -56,17 +57,26 @@ class Workspace:
 
     def save(self, name: str, content: str, revision: str) -> dict:
         path = self.path(name)
-        if self.read(name)["revision"] != revision:
-            raise Conflict("The document changed on disk. Reopen it before saving.")
-        descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".imd-")
+        directory = os.open(path.parent, os.O_RDONLY)
         try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-                file.write(content)
-            os.chmod(temporary, path.stat().st_mode)
-            os.replace(temporary, path)
+            fcntl.flock(directory, fcntl.LOCK_EX)
+            try:
+                current = path.read_text(encoding="utf-8")
+                if self._revision(current) != revision:
+                    raise Conflict("The document changed on disk. Reopen it before saving.")
+                descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".imd-")
+                try:
+                    with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+                        file.write(content)
+                    os.chmod(temporary, path.stat().st_mode)
+                    os.replace(temporary, path)
+                finally:
+                    Path(temporary).unlink(missing_ok=True)
+                return {"path": name, "content": content, "revision": self._revision(content)}
+            finally:
+                fcntl.flock(directory, fcntl.LOCK_UN)
         finally:
-            Path(temporary).unlink(missing_ok=True)
-        return {"path": name, "content": content, "revision": self._revision(content)}
+            os.close(directory)
 
     @staticmethod
     def _revision(content: str) -> str:

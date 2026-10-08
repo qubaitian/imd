@@ -44,6 +44,17 @@ def local_host(host: str) -> bool:
         return False
 
 
+def allows_default_document(request: Request) -> bool:
+    """A browser request without this service's origin must not create imd.md."""
+    host = request.headers.get("host", "")
+    origin = request.headers.get("origin")
+    if origin:
+        return origin == f"{request.url.scheme}://{host}"
+    # Local clients omit browser fetch metadata. A cross-site GET omits Origin too.
+    site = request.headers.get("sec-fetch-site")
+    return site is None or site in {"none", "same-origin"}
+
+
 def create_app(root: Path | None = None) -> FastAPI:
     default_root = (root or Path.cwd()).resolve()
     sessions = Sessions()
@@ -253,12 +264,17 @@ def create_app(root: Path | None = None) -> FastAPI:
         return RedirectResponse(quote(str(default_root)))
 
     @app.get("/{directory:path}")
-    async def open_directory(directory: str):
+    async def open_directory(directory: str, request: Request):
         workspace = open_workspace("/" + directory)
         try:
-            workspace.open_default()
+            if allows_default_document(request):
+                workspace.open_default()
+            elif not workspace.path("imd.md").is_file():
+                raise HTTPException(403, "Use the same browser origin.")
         except ValueError as error:
             raise HTTPException(400, str(error)) from error
+        except HTTPException:
+            raise
         except (OSError, UnicodeError) as error:
             raise HTTPException(400, "Cannot open imd.md in this workspace.") from error
         if (dist / "index.html").is_file():

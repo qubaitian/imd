@@ -11,8 +11,11 @@ IMD is a local Markdown editor with code execution in the browser.
 **Service log**: A local file containing the IMD service startup and runtime messages.  
 **Workspace**: An existing local directory identified by the absolute path in an IMD service URL.  
 **Document**: A Markdown file inside the workspace.  
+**Document revision**: A hash of a document's saved content.  
 **Default document**: The document named `imd.md` at the workspace root.  
 **Editor**: The text area containing a document's Markdown source.  
+**Save conflict**: A document state in which content on disk has changed since the editor last read it.  
+**Retry save**: An explicit save of the editor's full content using the document's latest revision.  
 **Document toolbar**: The row of document controls and session information above the document.  
 **Preview view**: A document view containing rendered Markdown.  
 **Edit view**: A document view containing the editor.  
@@ -131,8 +134,20 @@ An empty selection leaves the clipboard unchanged.
 Copying shows a confirmation or an error without changing the selection.  
 Output updates preserve other changes already saved in the document.  
 Conflicting edits remain in the editor with a visible error.  
+A save conflict shows Unsaved until it is resolved.  
+Retry save and `Cmd+S` replace the content on disk with the editor's full content after a save conflict.  
+Reload replaces the editor's content with the content on disk.  
 
 ## ADR
+
+### Save conflict recovery
+
+Keep Retry save and `Cmd+S` available after a save conflict, as requested.  
+Use the editor's full content for retry save instead of merging conflicting edits.  
+Retry save can replace changes from another browser tab or a local editor.  
+Read the latest content and document revision before retry save so the saved state matches the content on disk.  
+Keep the revision check during retry save so another change after that read produces a new save conflict.  
+Show Unsaved during a save conflict because the editor's content may differ from the content on disk.  
 
 ### Document toolbar
 
@@ -329,14 +344,14 @@ Replace the latest output instead of appending run history, as requested.
 Install uv and Node.js 20.19 or later.  
 IMD uses a POSIX pseudo-terminal and supports macOS and Linux.  
 
-Build the frontend once.  
+Build the frontend once before syncing the Python package.  
 
 ```sh
-uv sync
 cd frontend
 npm ci
 npm run build
 cd ..
+uv sync
 ```
 
 <!-- 4c4b9dad36a8 -->
@@ -419,10 +434,6 @@ Start or restart the IMD service.
 
 ```sh
 imd
-```
-
-<!-- 6b096c485ef3 -->
-```txt
 ```
 
 Open <http://localhost:8000/Users/qubaitian/refac/imd> in the browser.  

@@ -228,3 +228,22 @@ async def test_vim_can_edit_a_file_inside_a_run(tmp_path):
         assert "Edited in Vim" not in result["text"]
     finally:
         await session.close()
+
+
+async def test_missing_command_error_is_not_a_python_traceback(tmp_path):
+    session = await Session.open(tmp_path)
+    try:
+        missing = await session.run("no-such-cmd")
+        assert missing["status"] == "error"
+        assert "command not found" in missing["text"]
+        assert "no-such-cmd" in missing["text"]
+        assert "Traceback" not in missing["text"]
+        assert "XonshError" not in missing["text"]
+        assert "worker.py" not in missing["text"]
+        failed = await session.run("python3 -c 'import sys; sys.exit(3)'")
+        assert failed["status"] == "error"
+        assert "Traceback" not in failed["text"]
+        assert "worker.py" not in failed["text"]
+        assert (await session.run("print('still alive')"))["status"] == "ok"
+    finally:
+        await session.close()

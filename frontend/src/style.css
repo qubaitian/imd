@@ -114,6 +114,8 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .session-state { font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: #7c967c; }
 .error-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #f2e5da; color: #986644; padding: 10px 33px; font-size: 12px; }
 .error-banner button { border: 0; background: none; color: inherit; font-size: 19px; }
+.error-banner .banner-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.error-banner .banner-action { border: 1px solid currentColor; background: transparent; border-radius: 4px; font-size: 12px; padding: 4px 8px; }
 .empty-state { margin: auto; padding: 40px; max-width: 540px; text-align: center; color: #819174; font-size: 12px; line-height: 1.8; }
 .empty-state h1 { color: #435939; font-size: 24px; font-weight: 500; }
 .empty-mark { color: #aabd95; font-size: 70px; font-weight: 600; letter-spacing: -5px; }

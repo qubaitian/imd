@@ -345,3 +345,29 @@ def test_directory_sessions_are_separate(tmp_path):
 def test_console_accepts_any_code_label(label):
     message = ConsoleMessage.model_validate({"type": "run", "language": label})
     assert message.language == label
+
+
+def test_browser_request_without_origin_does_not_create_the_default_document(tmp_path):
+    directory = tmp_path / "notes"
+    directory.mkdir()
+    url = str(directory)
+    browser = {"sec-fetch-site": "cross-site", "sec-fetch-mode": "no-cors", "sec-fetch-dest": "image"}
+    with TestClient(create_app(tmp_path), base_url="http://localhost:8000") as client:
+        response = client.get(url, headers=browser)
+        assert response.status_code == 403
+        assert not (directory / "imd.md").exists()
+        opened = client.get(
+            url,
+            headers={"sec-fetch-site": "none", "sec-fetch-mode": "navigate", "sec-fetch-dest": "document"},
+        )
+        assert opened.status_code == 200
+        assert (directory / "imd.md").read_text() == ""
+        (directory / "imd.md").write_text("# Keep\n")
+        again = client.get(url, headers=browser)
+        assert again.status_code == 200
+        assert (directory / "imd.md").read_text() == "# Keep\n"
+        other = tmp_path / "other"
+        other.mkdir()
+        created = client.get(str(other), headers={"origin": "http://localhost:8000"})
+        assert created.status_code == 200
+        assert (other / "imd.md").read_text() == ""

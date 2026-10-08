@@ -27,7 +27,7 @@
   let session = $derived(active ? sessions.get(active.path) : null);
   let statuses = $derived(Object.fromEntries(renderMarkdown(active?.content || '').blocks.map((block, index) => [index, session?.runs[block.id] || {}])));
   let rendered = $derived(renderMarkdown(active?.content || '', statuses, session?.connected || false));
-  let dirty = $derived(active && active.content !== active.saved);
+  let dirty = $derived(active && (active.conflict || active.content !== active.saved));
   let filtered = $derived(documents.filter((path) => path.toLowerCase().includes(query.toLowerCase())));
 
   async function request(url, options) {
@@ -88,6 +88,35 @@
     if (!document) return;
     clearTimeout(timers.get(document.path));
     timers.set(document.path, setTimeout(() => save(document), 700));
+  }
+
+  async function reloadFromServer(document = active) {
+    if (!document) return;
+    try {
+      const fresh = await request(`/api/document?path=${encodeURIComponent(document.path)}`);
+      document.content = fresh.content;
+      document.saved = fresh.content;
+      document.revision = fresh.revision;
+      document.conflict = false;
+      error = '';
+    } catch (failure) {
+      error = failure.message;
+    }
+  }
+
+  async function retrySave(document = active) {
+    if (!document) return;
+    try {
+      const fresh = await request(`/api/document?path=${encodeURIComponent(document.path)}`);
+      document.saved = fresh.content;
+      document.revision = fresh.revision;
+      document.conflict = false;
+      error = '';
+      await save(document);
+    } catch (failure) {
+      document.conflict = true;
+      error = failure.message;
+    }
   }
 
   async function save(document = active) {
@@ -188,7 +217,8 @@
     if (event.target?.closest?.('.xterm')) return;
     if ((event.metaKey || event.ctrlKey) && event.key === 's') {
       event.preventDefault();
-      save();
+      if (active?.conflict) retrySave();
+      else save();
     }
   }
 
@@ -241,7 +271,15 @@
   </aside>
 
   <main>
-    {#if error}<div class="error-banner" role="alert"><span>{error}</span><button onclick={() => error = ''} aria-label="Dismiss error">×</button></div>{/if}
+    {#if active?.conflict}
+      <div class="error-banner" role="alert">
+        <span>{error || 'The document changed on disk. Your edits are kept.'}</span>
+        <span class="banner-actions">
+          <button class="banner-action" onclick={() => retrySave()}>Retry save</button>
+          <button class="banner-action" onclick={() => reloadFromServer()}>Reload</button>
+        </span>
+      </div>
+    {:else if error}<div class="error-banner" role="alert"><span>{error}</span><button onclick={() => error = ''} aria-label="Dismiss error">×</button></div>{/if}
     {#if active}
       <div class="document-toolbar">
         <div class="document-title"><Icon name="file" size={21} /><h1>{active.path.split('/').pop()}</h1><span class="save-state">{dirty ? 'Unsaved' : 'Saved'}</span></div>
