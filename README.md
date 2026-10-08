@@ -13,6 +13,7 @@ IMD is a local Markdown editor with code execution in the browser.
 **Document**: A Markdown file inside the workspace.  
 **Default document**: The document named `imd.md` at the workspace root.  
 **Editor**: The text area containing a document's Markdown source.  
+**Document toolbar**: The row of document controls and session information above the document.  
 **Preview view**: A document view containing rendered Markdown.  
 **Edit view**: A document view containing the editor.  
 **Split view**: A document view containing the editor beside rendered Markdown.  
@@ -27,6 +28,7 @@ IMD is a local Markdown editor with code execution in the browser.
 **Output block**: A `txt` code block linked by an output marker to the preceding code block, containing the latest run's plain terminal output.  
 **Executable block**: Any code block other than an output block.  
 **Session**: A persistent xonsh process for one document, with its own working directory, environment, and Python variables.  
+**Session status**: The session's current state and working directory shown in the document toolbar.  
 **Session connection**: A WebSocket connection between one browser page and a document session.  
 **Run**: One execution of an executable block inside its document's session.  
 **Agent command**: A program and its fixed arguments configured in a document's session for an external coding agent.  
@@ -117,6 +119,7 @@ The alternate terminal screen used by Vim is not part of the saved output.
 Another run replaces the same output block and keeps its output marker.  
 The service automatically saves output when the run ends, even if the browser disconnects.  
 The editor automatically saves changes after a short pause.  
+The document toolbar contains session status and the automatic save notice beside Reset session.  
 Click a code block's body or focus it and press Enter to open its code block editor.  
 Leaving the code block editor restores the rendered code.  
 Code block changes use the document's automatic save.  
@@ -130,6 +133,13 @@ Output updates preserve other changes already saved in the document.
 Conflicting edits remain in the editor with a visible error.  
 
 ## ADR
+
+### Document toolbar
+
+Keep session status beside Reset session instead of in a separate footer, as requested.  
+Remove the separate workspace header because the sidebar and document title already identify the document.  
+Use automatic save and the existing keyboard shortcut instead of a Save button, as requested.  
+Allow the document toolbar to wrap in narrow windows so session information remains available.  
 
 ### Run for every ordinary code block
 
@@ -432,7 +442,7 @@ The previous `open`, `close`, `--root`, and `--port` arguments are removed.
 Open files from the sidebar.  
 Use Edit or Split to change a document.  
 Changes save automatically after a short pause.  
-Use the Save button or `Cmd+S` on macOS and `Ctrl+S` on Linux to save immediately.  
+Use `Cmd+S` on macOS and `Ctrl+S` on Linux to save immediately.  
 Unsaved changes stay available when switching documents in the current browser tab.  
 A browser refresh can clear changes that have not reached the service.  
 The browser asks before leaving when there are unsaved changes.  

@@ -16,7 +16,6 @@
   let view = $state('preview');
   let error = $state('');
   let loading = $state(true);
-  let saving = $state(false);
   let referenceStatus = $state('');
   let openRequest = 0;
   let sourceEditor = $state();
@@ -100,7 +99,6 @@
       return;
     }
     if (document.content === document.saved || document.conflict) return;
-    saving = true;
     const task = (async () => {
       const content = document.content;
       const revision = document.revision;
@@ -126,7 +124,6 @@
     pendingSaves.set(document.path, task);
     await task;
     pendingSaves.delete(document.path);
-    saving = pendingSaves.size > 0;
     if (document.content !== document.saved && !document.conflict) scheduleSave(document);
   }
 
@@ -244,15 +241,16 @@
   </aside>
 
   <main>
-    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong>{active?.path || 'Documents'}</strong></div><span class="topbar-note"><span class="small-dot"></span> Runs on your machine</span></header>
     {#if error}<div class="error-banner" role="alert"><span>{error}</span><button onclick={() => error = ''} aria-label="Dismiss error">×</button></div>{/if}
     {#if active}
       <div class="document-toolbar">
         <div class="document-title"><Icon name="file" size={21} /><h1>{active.path.split('/').pop()}</h1><span class="save-state">{dirty ? 'Unsaved' : 'Saved'}</span></div>
         <div class="document-controls">
           <div class="view-toggle" aria-label="Document view">{#each ['preview', 'split', 'edit'] as mode}<button class:selected={view === mode} onclick={() => view = mode}>{mode === 'preview' ? 'Preview' : mode === 'split' ? 'Split' : 'Edit'}</button>{/each}</div>
-          <button class="session-reset" onclick={() => session?.reset()} disabled={!session?.connected} title="Clear the document session"><Icon name="reset" size={14} /> Reset session</button>
-          <button class="save-button" onclick={() => save()} disabled={!dirty || saving}><Icon name="save" size={15} />{saving ? 'Saving…' : 'Save'}</button>
+          <div class="session-controls">
+            <button class="session-reset" onclick={() => session?.reset()} disabled={!session?.connected} title="Clear the document session"><Icon name="reset" size={14} /> Reset session</button>
+            <div class="session-status"><span class:online={session?.connected} class="state-dot"></span><span>{session?.state || 'connecting'}</span><span class="session-directory" title={session?.cwd || ''}>{session?.cwd || ''}</span><span class="reference-status" role="status" title={referenceStatus}>{referenceStatus || 'Changes and output save automatically'}</span></div>
+          </div>
         </div>
       </div>
       <div class="document-body" class:split={view === 'split'}>
@@ -266,7 +264,6 @@
           </div>
         {/if}
       </div>
-      <div class="session-footer"><span class:online={session?.connected} class="state-dot"></span><span>{session?.state || 'connecting'}</span><span class="session-directory">{session?.cwd || ''}</span><span class="reference-status" role="status" title={referenceStatus}>{referenceStatus || 'Changes and output save automatically'}</span></div>
     {:else}
       <div class="empty-state"><span class="empty-mark">imd.</span><h1>{loading ? 'Opening your workspace…' : 'Start with a Markdown file.'}</h1><p>Open a document from the sidebar.</p><p>Use any fenced code block to run xonsh code, with or without a language label.</p><p>Use an <code>agent</code> block to submit a prompt after configuring agent commands.</p></div>
     {/if}

@@ -8,6 +8,8 @@ import { renderMarkdown } from './markdown.js';
 vi.mock('./session.svelte.js', () => ({
   DocumentSession: class {
     connected = true;
+    state = 'ready';
+    cwd = '/notes';
     runs = {};
     close() {}
   },
@@ -23,6 +25,25 @@ afterEach(async () => {
 });
 
 describe('code block editor in the preview', () => {
+  it('shows session information beside Reset session without a header or Save button', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => ({
+      ok: true,
+      json: async () => url.startsWith('/api/documents')
+        ? { documents: ['imd.md'] }
+        : { path: 'imd.md', content: '# Notes', revision: '1' },
+    })));
+    flushSync(() => component = mount(App, { target: document.body }));
+    await vi.waitFor(() => expect(document.querySelector('.document-toolbar')).not.toBeNull());
+    expect(document.querySelector('main > header')).toBeNull();
+    expect([...document.querySelectorAll('button')].some((button) => button.textContent.trim() === 'Save')).toBe(false);
+    const reset = [...document.querySelectorAll('button')].find((button) => button.textContent.includes('Reset session'));
+    const status = reset.nextElementSibling;
+    expect(status.textContent).toContain('ready');
+    expect(status.textContent).toContain('/notes');
+    expect(status.textContent).toContain('Changes and output save automatically');
+    expect(document.querySelector('.document-body').nextElementSibling).toBeNull();
+  });
+
   it.each(['Preview', 'Split'])('edits code in the full app in %s view', async (view) => {
     vi.stubGlobal('fetch', vi.fn(async (url) => ({
       ok: true,
