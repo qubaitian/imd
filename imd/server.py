@@ -1,0 +1,180 @@
+"""The local document API and session WebSocket."""
+
+import asyncio
+import ipaddress
+import json
+from contextlib import asynccontextmanager
+from pathlib import Path
+from urllib.parse import urlsplit
+
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, ValidationError
+
+from imd.sessions import Sessions
+from imd.workspace import Conflict, Workspace
+
+
+class SaveDocument(BaseModel):
+    path: str
+    content: str = Field(max_length=4_000_000)
+    revision: str
+
+
+class ConsoleMessage(BaseModel):
+    type: str
+    id: str = Field(default="", max_length=100)
+    code: str = Field(default="", max_length=256_000)
+    data: str = Field(default="", max_length=8192)
+    columns: int = Field(default=80, ge=2, le=500)
+    rows: int = Field(default=24, ge=2, le=200)
+
+
+def local_host(host: str) -> bool:
+    try:
+        hostname = urlsplit(f"http://{host}").hostname
+        return hostname == "localhost" or ipaddress.ip_address(hostname).is_loopback
+    except (ValueError, TypeError):
+        return False
+
+
+def create_app(root: Path) -> FastAPI:
+    workspace = Workspace(root)
+    sessions = Sessions()
+    runs: set[asyncio.Task] = set()
+
+    @asynccontextmanager
+    async def lifespan(app):
+        yield
+        await sessions.close()
+        for task in tuple(runs):
+            task.cancel()
+        await asyncio.gather(*runs, return_exceptions=True)
+
+    app = FastAPI(lifespan=lifespan)
+
+    @app.middleware("http")
+    async def check_browser(request: Request, call_next):
+        host = request.headers.get("host", "")
+        if not local_host(host):
+            return JSONResponse({"detail": "Use a loopback host."}, status_code=400)
+        origin = request.headers.get("origin")
+        if origin and origin != f"{request.url.scheme}://{host}":
+            return JSONResponse({"detail": "Use the same browser origin."}, status_code=403)
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+        return response
+
+    def document_path(name):
+        try:
+            path = workspace.path(name)
+            if not path.is_file():
+                raise FileNotFoundError(name)
+            return path
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
+        except FileNotFoundError as error:
+            raise HTTPException(404, "Document not found.") from error
+
+    @app.get("/api/documents")
+    async def list_documents():
+        return {"documents": workspace.list()}
+
+    @app.get("/api/document")
+    async def read_document(path: str):
+        document_path(path)
+        try:
+            return workspace.read(path)
+        except (OSError, UnicodeError) as error:
+            raise HTTPException(400, "Cannot read this document as UTF-8.") from error
+
+    @app.put("/api/document")
+    async def save_document(document: SaveDocument):
+        document_path(document.path)
+        try:
+            return workspace.save(document.path, document.content, document.revision)
+        except Conflict as error:
+            raise HTTPException(409, str(error)) from error
+        except (OSError, UnicodeError) as error:
+            raise HTTPException(400, "Cannot save this document.") from error
+
+    @app.post("/api/session/reset")
+    async def reset_session(path: str):
+        session = await sessions.reset(document_path(path))
+        return session.snapshot()
+
+    @app.websocket("/api/session")
+    async def console(socket: WebSocket, path: str):
+        host = socket.headers.get("host", "")
+        scheme = "https" if socket.url.scheme == "wss" else "http"
+        if not local_host(host) or socket.headers.get("origin") != f"{scheme}://{host}":
+            await socket.close(code=1008)
+            return
+        try:
+            document = document_path(path)
+        except HTTPException:
+            await socket.close(code=1008)
+            return
+        await socket.accept()
+        session = await sessions.get(document)
+        events = session.subscribe()
+
+        async def send_events():
+            while True:
+                event = await events.get()
+                await socket.send_json(event)
+                if event["type"] == "closed":
+                    await socket.close(code=1012)
+                    return
+
+        async def run_code(code, run_id):
+            try:
+                await session.run(code, run_id)
+            except RuntimeError as error:
+                if not events.full():
+                    events.put_nowait({"type": "error", "message": str(error), "id": run_id})
+
+        sender = asyncio.create_task(send_events())
+        try:
+            while True:
+                try:
+                    message = ConsoleMessage.model_validate(await socket.receive_json())
+                except (ValidationError, json.JSONDecodeError):
+                    events.put_nowait({"type": "error", "message": "Invalid console message."})
+                    continue
+                if message.type == "run":
+                    if len(runs) >= 100:
+                        events.put_nowait({"type": "error", "message": "Too many queued runs."})
+                        continue
+                    task = asyncio.create_task(run_code(message.code, message.id))
+                    runs.add(task)
+                    task.add_done_callback(runs.discard)
+                elif message.type == "input":
+                    session.write(message.data)
+                elif message.type == "resize":
+                    session.resize(message.columns, message.rows)
+                elif message.type == "interrupt":
+                    session.interrupt()
+                else:
+                    events.put_nowait({"type": "error", "message": "Unknown console message."})
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        finally:
+            session.unsubscribe(events)
+            sender.cancel()
+            await asyncio.gather(sender, return_exceptions=True)
+
+    dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    if dist.is_dir():
+        app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
+    else:
+
+        @app.get("/")
+        async def build_required():
+            return JSONResponse(
+                {"detail": "Build the frontend with npm run build in frontend/."}, status_code=503
+            )
+
+    return app
