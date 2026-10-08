@@ -7,6 +7,7 @@
   import Icon from './Icon.svelte';
   import { renderMarkdown } from './markdown.js';
   import { copyDocumentReference } from './reference.js';
+  import { replaceCodeBlock } from './code-block.js';
 
   let documents = $state([]);
   let active = $state(null);
@@ -125,6 +126,16 @@
     if (document.content !== document.saved && !document.conflict) scheduleSave(document);
   }
 
+  function editCodeBlock(block, code) {
+    try {
+      active.content = replaceCodeBlock(active.content, block, code);
+      referenceStatus = '';
+      scheduleSave();
+    } catch (failure) {
+      error = failure.message;
+    }
+  }
+
   async function runBlock(event) {
     const button = event.target.closest?.('button[data-block]');
     if (!button || button.disabled || !session?.connected) return;
@@ -221,7 +232,7 @@
         {/if}
         {#if view !== 'edit'}
           <div class="preview-pane"><div class="preview-meta"><span class="eyebrow">DOCUMENT PREVIEW</span><span class="block-count">{rendered.blocks.length} executable {rendered.blocks.length === 1 ? 'block' : 'blocks'}</span></div>
-            {#key active.path}<MarkdownView {rendered} {session} onrun={runBlock} />{/key}
+            {#key active.path}<MarkdownView {rendered} {session} onrun={runBlock} oncodechange={editCodeBlock} />{/key}
             <div class="preview-end"><span></span><Icon name="file" size={13} /><span></span></div>
           </div>
         {/if}

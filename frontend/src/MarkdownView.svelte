@@ -3,10 +3,12 @@
   import DOMPurify from 'dompurify';
   import morphdom from 'morphdom';
   import Output from './Output.svelte';
+  import CodeBlock from './CodeBlock.svelte';
 
-  let { rendered, session, onrun } = $props();
+  let { rendered, session, onrun, oncodechange } = $props();
   let root;
   const widgets = new Map();
+  const editors = new Map();
 
   $effect(() => {
     if (!root) return;
@@ -14,12 +16,25 @@
     for (const [id, widget] of widgets) {
       if (!ids.has(id)) { unmount(widget.component); widgets.delete(id); }
     }
+    for (const [index, editor] of editors) {
+      if (index >= rendered.editableBlocks.length) { unmount(editor.component); editors.delete(index); }
+    }
     const html = DOMPurify.sanitize(rendered.html);
     morphdom(root, `<article>${html}</article>`, {
       childrenOnly: true,
-      getNodeKey: (node) => node.nodeType === 1 ? node.getAttribute('data-output-slot') : undefined,
-      onBeforeElUpdated: (from, to) => !(from.hasAttribute('data-output-slot') && from.getAttribute('data-output-slot') === to.getAttribute('data-output-slot')),
+      getNodeKey: (node) => node.nodeType === 1 ? (node.hasAttribute('data-output-slot') ? `output-${node.getAttribute('data-output-slot')}` : node.hasAttribute('data-code-slot') ? `code-${node.getAttribute('data-code-slot')}` : undefined) : undefined,
+      onBeforeElUpdated: (from, to) => !['data-output-slot', 'data-code-slot'].some((attribute) => from.hasAttribute(attribute) && from.getAttribute(attribute) === to.getAttribute(attribute)),
     });
+    for (const [index, block] of rendered.editableBlocks.entries()) {
+      const existing = editors.get(index);
+      if (existing) { existing.props.block = block; continue; }
+      const element = root.querySelector(`[data-code-slot="${index}"]`);
+      if (element) {
+        element.replaceChildren();
+        const props = $state({ block, onchange: oncodechange });
+        editors.set(index, { props, component: mount(CodeBlock, { target: element, props }) });
+      }
+    }
     for (const output of rendered.outputs) {
       const existing = widgets.get(output.id);
       if (existing) { existing.props.text = output.text; continue; }
@@ -31,7 +46,7 @@
     }
   });
 
-  onDestroy(() => { for (const widget of widgets.values()) unmount(widget.component); });
+  onDestroy(() => { for (const widget of [...widgets.values(), ...editors.values()]) unmount(widget.component); });
 </script>
 
 <!-- Run buttons are delegated from the rendered Markdown. -->

@@ -3,6 +3,12 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 export default defineConfig({
   plugins: [svelte()],
+  test: {
+    projects: [
+      { extends: true, test: { name: 'modules', include: ['src/**/*.test.js'], exclude: ['src/MarkdownView.test.js'] } },
+      { extends: true, resolve: { conditions: ['browser'] }, test: { name: 'components', include: ['src/MarkdownView.test.js'], environment: 'jsdom' } },
+    ],
+  },
   build: {
     rollupOptions: {
       output: {

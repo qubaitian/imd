@@ -18,6 +18,7 @@ def agent(tmp_path):
         "    log.write(json.dumps({'args': sys.argv[1:], 'cwd': os.getcwd(), "
         "'env': os.getenv('IMD_AGENT_TEST')}) + '\\n')\n"
         "print('agent reply', flush=True)\n"
+        "print('agent progress: ' + sys.argv[-1].strip(), file=sys.stderr, flush=True)\n"
         "if sys.argv[-1].strip() == 'fail': sys.exit(3)\n"
         "if sys.argv[-1].strip() == 'wait': time.sleep(30)\n"
         "if sys.argv[-1].strip() == 'input': print('received=' + input(), flush=True)\n"
@@ -45,7 +46,7 @@ async def test_prompts_keep_literal_text_and_switch_to_continue_after_success(tm
         first = await session.run(prompt, language="agent")
         second = await session.run("What did I ask?\n", language="agent")
         assert first["status"] == second["status"] == "ok"
-        assert first["text"] == "agent reply\n"
+        assert first["text"] == f"agent reply\nagent progress: {prompt.strip()}\n"
         assert [call["args"] for call in calls()] == [
             ["first", prompt], ["continue", "What did I ask?\n"],
         ]
@@ -196,15 +197,94 @@ async def test_agent_configuration_is_shared_per_document_and_cleared_by_reset(t
     sessions = Sessions()
     try:
         first = await sessions.get(tmp_path / "first.md")
-        await configure(first, "# Commands\n\n" + config)
+        await configure(first, "# Commands\n\n" + config + "imd set agent stderr shared.log\n")
         reopened = await sessions.get(tmp_path / "first.md")
-        await reopened.run("hello", language="agent")
+        result = await reopened.run("hello", language="agent")
+        assert result["text"] == "agent reply\n"
+        assert (tmp_path / "shared.log").read_text() == "agent progress: hello\n"
         second = await sessions.get(tmp_path / "second.md")
         assert (await second.run("print('code')", language="sh"))["text"] == "code\n"
         replacement = await sessions.reset(tmp_path / "first.md")
         assert (await replacement.run("print('fresh')", language="sh"))["text"] == "fresh\n"
         await configure(replacement, config)
-        await replacement.run("hello again", language="agent")
+        result = await replacement.run("hello again", language="agent")
+        assert "agent progress: hello again" in result["text"]
+        assert (tmp_path / "shared.log").read_text() == "agent progress: hello\n"
         assert [call["args"][0] for call in calls()] == ["first", "first"]
     finally:
         await sessions.close()
+
+
+async def test_agent_stderr_log_keeps_stdout_and_overwrites_for_each_command(tmp_path, agent):
+    config, calls = agent
+    session = await Session.open(tmp_path)
+    try:
+        await configure(session, config + "imd set agent stderr 'agent log.txt'\n")
+        for prompt in ["first prompt", "later prompt", "fail", "retry"]:
+            result = await session.run(prompt, language="agent")
+            assert result["status"] == ("error" if prompt == "fail" else "ok")
+            assert "agent reply" in result["text"]
+            assert "agent progress" not in result["text"]
+            assert (tmp_path / "agent log.txt").read_text() == f"agent progress: {prompt}\n"
+        assert [call["args"][0] for call in calls()] == [
+            "first", "continue", "continue", "continue",
+        ]
+    finally:
+        await session.close()
+
+
+async def test_agent_stderr_configuration_uses_current_directory_and_can_be_cleared(tmp_path, agent):
+    config, calls = agent
+    (tmp_path / "child").mkdir()
+    session = await Session.open(tmp_path)
+    try:
+        await configure(session, config)
+        await configure(session, "imd set agent stderr codex.log")
+        await session.run("cd child", language="sh")
+        result = await session.run("hello", language="agent")
+        assert "agent progress" not in result["text"]
+        assert (tmp_path / "child" / "codex.log").read_text() == "agent progress: hello\n"
+        assert not (tmp_path / "codex.log").exists()
+        ordinary = await session.run("import sys; print('ordinary error', file=sys.stderr)")
+        assert ordinary["text"] == "ordinary error\n"
+        await configure(session, "imd set agent stderr")
+        result = await session.run("visible", language="agent")
+        assert "agent progress: visible" in result["text"]
+        assert [call["args"][0] for call in calls()] == ["first", "continue"]
+    finally:
+        await session.close()
+
+
+async def test_invalid_agent_stderr_configuration_preserves_commands_and_log(tmp_path, agent):
+    config, calls = agent
+    session = await Session.open(tmp_path)
+    try:
+        await configure(session, config + "imd set agent stderr kept.log\n")
+        await session.run("hello", language="agent")
+        for invalid in ["imd set agent stderr one two", "imd set agent stderr ''"]:
+            result = await session.run(config + "imd set agent stderr lost.log\n" + invalid,
+                                       language="sh")
+            assert result["status"] == "error"
+            result = await session.run("kept", language="agent")
+            assert "agent progress" not in result["text"]
+            assert (tmp_path / "kept.log").read_text() == "agent progress: kept\n"
+            assert calls()[-1]["args"][0] == "continue"
+        assert not (tmp_path / "lost.log").exists()
+    finally:
+        await session.close()
+
+
+async def test_agent_stderr_log_open_failure_does_not_advance_command(tmp_path, agent):
+    config, calls = agent
+    session = await Session.open(tmp_path)
+    try:
+        await configure(session, config + "imd set agent stderr missing/codex.log\n")
+        result = await session.run("hello", language="agent")
+        assert result["status"] == "error"
+        assert "missing/codex.log" in result["text"]
+        assert calls() == []
+        await configure(session, "imd set agent stderr")
+        await session.run("retry", language="agent")
+        assert calls()[0]["args"][0] == "first"
+    finally:
+        await session.close()

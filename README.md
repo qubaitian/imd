@@ -12,16 +12,23 @@ IMD is a local Markdown editor with code execution in the browser.
 **Workspace**: An existing local directory identified by the absolute path in an IMD service URL.  
 **Document**: A Markdown file inside the workspace.  
 **Default document**: The document named `imd.md` at the workspace root.  
-**Editor**: The text area containing a document's Markdown source in Edit or Split view.  
+**Editor**: The text area containing a document's Markdown source.  
+**Preview view**: A document view containing rendered Markdown.  
+**Edit view**: A document view containing the editor.  
+**Split view**: A document view containing the editor beside rendered Markdown.  
 **Selection**: A nonempty range of text in the editor.  
 **Document reference**: Plain text in the form `@/absolute/document/path.md:start-end` with inclusive source line numbers starting at 1.  
 **Code block**: A fenced section of a document with a language label.  
+**Code block editor**: A text area for the body of a code block in Preview or Split view.  
 **Agent block**: A code block with the label `agent`.  
 **Executable block**: A code block with the label `xonsh`, `shell`, `sh`, `py`, `python`, or `agent`.  
 **Session**: A persistent xonsh process for one document, with its own working directory, environment, and Python variables.  
 **Session connection**: A WebSocket connection between one browser page and a document session.  
 **Run**: One execution of an executable block inside its document's session.  
 **Agent command**: A program and its fixed arguments configured in a document's session for an external coding agent.  
+**Agent stdout**: The standard output stream of an agent command.  
+**Agent stderr**: The standard error stream of an agent command.  
+**Agent log**: A local file containing agent stderr from the latest run.  
 **First command**: The agent command for prompts before the first success in a session.  
 **Continue command**: The agent command for later prompts in the same session.  
 **Prompt**: The complete text of an agent block submitted to an agent command after configuration.  
@@ -73,6 +80,14 @@ The first line that is neither blank nor a shell comment identifies a configurat
 Invalid configuration leaves the previous commands unchanged.  
 Agent commands use the session's current directory and environment.  
 Agent output, input, interruption, and saving use the existing console and output block.  
+`imd set agent stderr PATH` configures an agent log for both agent commands.  
+The path is a literal path relative to the session's current directory at run time, or an absolute path.  
+Each agent run creates or overwrites the agent log.  
+The parent directory must already exist.  
+Agent stdout remains in the console and output block.  
+Run failures remain visible in the console.  
+`imd set agent stderr` returns agent stderr to the console.  
+Changing the agent log keeps the current first or continue command choice.  
 Use `xonsh`, `shell`, `sh`, `py`, or `python` blocks for code after agent configuration.  
 Agent configuration is shared by browser tabs for the same document.  
 Resetting a session or restarting the service clears its agent configuration.  
@@ -87,6 +102,10 @@ The alternate terminal screen used by Vim is not part of the saved output.
 Another run replaces the same output block and keeps its output marker.  
 The service automatically saves output when the run ends, even if the browser disconnects.  
 The editor automatically saves changes after a short pause.  
+Click a code block's body or focus it and press Enter to open its code block editor.  
+Leaving the code block editor restores the rendered code.  
+Code block changes use the document's automatic save.  
+Output blocks and queued or running executable blocks are not editable in the preview.  
 `Cmd+L` copies a document reference for the selection when the browser passes the shortcut to the editor.  
 The document reference uses the editor's current source, including unsaved changes.  
 An end position at the start of the next line excludes that line.  
@@ -96,6 +115,23 @@ Output updates preserve other changes already saved in the document.
 Conflicting edits remain in the editor with a visible error.  
 
 ## ADR
+
+### Code block editing in the preview
+
+Use a text area for each active code block editor instead of replacing the document editor with a rich text library.  
+Only code block bodies need direct editing.  
+Keep the code block editor mounted during preview updates so typing and terminal output do not reset its selection.  
+Replace source lines instead of serializing rendered HTML so surrounding Markdown and output markers stay unchanged.  
+Keep output blocks read-only because a run owns their content.  
+Keep queued and running code blocks read-only so visible code stays consistent with the submitted run.  
+
+### Frontend component tests
+
+Use jsdom with Vitest for component tests instead of testing only Markdown strings.  
+A rendered code block can have correct HTML while its editor cannot receive clicks.  
+Use Svelte's browser condition for component tests because its server runtime does not run browser effects.  
+Keep module tests in a separate Vitest project so their runtime stays unchanged.  
+Check the full app in Preview and Split view through clicks and text input.  
 
 ### Agent commands in a document session
 
@@ -114,6 +150,17 @@ Use xonsh's existing subprocess runner instead of a second process manager.
 It preserves the session environment, foreground terminal input, and interruption behavior.  
 Choose the continue command after a successful first prompt instead of after any attempt.  
 A failed or interrupted first attempt may not have created an agent conversation.  
+
+### Agent stderr in a local log
+
+Use a separate `imd set agent stderr` setting instead of repeating a shell wrapper in both agent commands.  
+Keep this setting available for any agent program instead of adding a Codex-specific command.  
+Pass a structured redirection to xonsh instead of changing the worker's standard error stream.  
+Only the agent command uses the agent log.  
+The worker keeps reporting run failures in the console.  
+Keep xonsh's existing process runner for foreground input and interruption.  
+Overwrite the agent log instead of appending because it contains the latest run, like the output block.  
+Treat log paths as literal arguments instead of shell source.  
 
 ### Document reference in Chrome
 
@@ -245,8 +292,8 @@ cd ..
 
 <!-- 4c4b9dad36a8 -->
 ```txt
-Resolved 37 packages in 3ms
-Checked 36 packages in 3ms
+Resolved 37 packages in 12ms
+Checked 36 packages in 10ms
 
 added 75 packages, and audited 76 packages in 2s
 
@@ -266,13 +313,13 @@ ew, or `npm approve-scripts <pkg>` to allow.
 > vite build
 
 vite v7.3.7 building client environment for production...
-✓ 198 modules transformed.
+✓ 200 modules transformed.
 dist/index.html                     0.62 kB │ gzip:  0.34 kB
-dist/assets/index-BMFLZ8d_.css     15.12 kB │ gzip:  4.09 kB
-dist/assets/index-CmPi7ojq.js      63.76 kB │ gzip: 24.85 kB
+dist/assets/index-DMsVpGNA.css     15.57 kB │ gzip:  4.16 kB
+dist/assets/index-Dr4Gmku6.js      66.55 kB │ gzip: 25.86 kB
 dist/assets/markdown-Btou6k2a.js  134.21 kB │ gzip: 57.39 kB
 dist/assets/terminal-DP_gxef0.js  330.51 kB │ gzip: 83.39 kB
-✓ built in 778ms
+✓ built in 746ms
 ```
 
 Install the command from this repository after building the frontend.  
@@ -284,12 +331,12 @@ uv tool install --reinstall .
 
 <!-- 3d450f0088d1 -->
 ```txt
-Resolved 26 packages in 696ms
+Resolved 26 packages in 605ms
    Building imd @ file:///Users/qubaitian/refac/imd
       Built imd @ file:///Users/qubaitian/refac/imd
-Prepared 26 packages in 440ms
-Uninstalled 26 packages in 95ms
-Installed 26 packages in 17ms
+Prepared 26 packages in 429ms
+Uninstalled 26 packages in 125ms
+Installed 26 packages in 18ms
  ~ annotated-doc==0.0.5
  ~ annotated-types==0.8.0
  ~ anyio==4.15.1
@@ -375,6 +422,20 @@ Later prompts use the continue command.
 The agent program must be installed and available in the session's PATH.  
 The configured agent program owns its conversation history.  
 IMD chooses the command and does not manage the agent program's conversation identifiers.  
+
+For Codex CLI, send agent stderr to an agent log to keep process messages out of the output block.  
+Use the ordinary text mode instead of `--json`, which writes events to stdout.  
+
+```sh
+imd set agent stderr codex.log
+imd set agent first codex exec -m gpt-6.1-sol -c model_reasoning_effort=medium
+imd set agent continue codex exec resume --last
+```
+
+Each run overwrites `codex.log` in the session's current directory.  
+Read this file when an agent run fails.  
+Use `imd set agent stderr` to show agent stderr in the console again.  
+
 Use shell comments for explanations inside a configuration block.  
 Use `sh` or `xonsh` blocks for ordinary commands after configuring an agent.  
 Run the configuration block again after resetting the session or restarting the service.  

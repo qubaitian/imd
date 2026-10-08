@@ -9,8 +9,12 @@ class AgentCommands:
     def __init__(self):
         self._commands: dict[str, list[str]] = {}
         self._started = False
+        self._stderr: str | None = None
 
-    def execute(self, code: str, language: str, run_command: Callable[[list[str]], None]) -> bool:
+    def execute(
+        self, code: str, language: str,
+        run_command: Callable[[list[str | tuple[str, str]]], None],
+    ) -> bool:
         """Handle sh configuration or an agent prompt, returning False for ordinary code."""
         lines = [
             line.strip() for line in code.splitlines()
@@ -18,8 +22,14 @@ class AgentCommands:
         ]
         if language == "sh" and lines and re.match(r"^imd\s+set\s+agent(?:\s|$)", lines[0]):
             commands = {}
+            stderr = self._stderr
             for line in lines:
                 words = shlex.split(line, comments=True)
+                if words[:4] == ["imd", "set", "agent", "stderr"]:
+                    if len(words) > 5 or (len(words) == 5 and not words[4]):
+                        raise ValueError("Use imd set agent stderr [PATH].")
+                    stderr = words[4] if len(words) == 5 else None
+                    continue
                 if (
                     len(words) < 5
                     or words[:3] != ["imd", "set", "agent"]
@@ -28,10 +38,12 @@ class AgentCommands:
                 ):
                     raise ValueError(
                         "Use imd set agent first PROGRAM [ARGUMENTS] or "
-                        "imd set agent continue PROGRAM [ARGUMENTS]."
+                        "imd set agent continue PROGRAM [ARGUMENTS] or "
+                        "imd set agent stderr [PATH]."
                     )
                 commands[words[3]] = words[4:]
             self._commands.update(commands)
+            self._stderr = stderr
             if "first" in commands:
                 self._started = False
             print("Agent commands configured for this session.", flush=True)
@@ -43,6 +55,9 @@ class AgentCommands:
         if not code.strip():
             raise ValueError("The prompt is empty.")
         command = self._commands["continue" if self._started else "first"]
-        run_command([*command, code])
+        arguments: list[str | tuple[str, str]] = [*command, code]
+        if self._stderr is not None:
+            arguments.append(("2>", self._stderr))
+        run_command(arguments)
         self._started = True
         return True
