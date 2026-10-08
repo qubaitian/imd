@@ -102,6 +102,7 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .session-footer .state-dot { margin-left: 0; }
 .session-footer .state-dot.online { background: #7e9a6a; }
 .session-directory { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 9px; }
+.reference-status { min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .preview-end { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 30px auto 0; color: #c6cebc; max-width: 100px; }
 .preview-end > span { height: 1px; background: #e5e9de; flex: 1; }
 .editor-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #fafbf5; }

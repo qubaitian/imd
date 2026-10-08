@@ -12,6 +12,9 @@ IMD is a local Markdown editor with code execution in the browser.
 **Workspace**: An existing local directory identified by the absolute path in an IMD service URL.  
 **Document**: A Markdown file inside the workspace.  
 **Default document**: The document named `imd.md` at the workspace root.  
+**Editor**: The text area containing a document's Markdown source in Edit or Split view.  
+**Selection**: A nonempty range of text in the editor.  
+**Document reference**: Plain text in the form `@/absolute/document/path.md:start-end` with inclusive source line numbers starting at 1.  
 **Code block**: A fenced section of a document with a language label.  
 **Executable block**: A code block with the label `xonsh`, `shell`, `sh`, `py`, or `python`.  
 **Session**: A persistent xonsh process for one document, with its own working directory, environment, and Python variables.  
@@ -55,10 +58,25 @@ The alternate terminal screen used by Vim is not part of the saved output.
 Another run replaces the same output block and keeps its output marker.  
 The service automatically saves output when the run ends, even if the browser disconnects.  
 The editor automatically saves changes after a short pause.  
+`Cmd+L` copies a document reference for the selection when the browser passes the shortcut to the editor.  
+The document reference uses the editor's current source, including unsaved changes.  
+An end position at the start of the next line excludes that line.  
+An empty selection leaves the clipboard unchanged.  
+Copying shows a confirmation or an error without changing the selection.  
 Output updates preserve other changes already saved in the document.  
 Conflicting edits remain in the editor with a visible error.  
 
 ## ADR
+
+### Document reference in Chrome
+
+Use the editor's selection offsets instead of preview text because the editor contains the document's source lines.  
+Use the browser Clipboard API instead of a service endpoint because copying is a local browser action.  
+Keep the browser editor instead of adding a desktop window, as requested.  
+Handle `Cmd+L` on the editor and cancel its default action only for a selection.  
+A real Chrome check on macOS copied the selected source lines without changing browser or system settings.  
+Use this existing key event behavior instead of requiring an extension or changing the address bar shortcut across Chrome.  
+Other browser environments may reserve this shortcut before the editor receives it.  
 
 ### Directory URL and default document
 
@@ -168,9 +186,9 @@ cd ..
 <!-- 4c4b9dad36a8 -->
 ```txt
 Resolved 37 packages in 4ms
-Checked 36 packages in 5ms
+Checked 36 packages in 13ms
 
-added 75 packages, and audited 76 packages in 8s
+added 75 packages, and audited 76 packages in 1s
 
 14 packages are looking for funding
   run `npm fund` for details
@@ -188,13 +206,13 @@ ew, or `npm approve-scripts <pkg>` to allow.
 > vite build
 
 vite v7.3.7 building client environment for production...
-✓ 197 modules transformed.
-dist/index.html                     0.62 kB │ gzip:  0.34 kB
-dist/assets/index-D8L1581v.css     15.02 kB │ gzip:  4.06 kB
-dist/assets/index-Bp7Shjd6.js      62.56 kB │ gzip: 24.41 kB
+✓ 198 modules transformed.
+dist/index.html                     0.62 kB │ gzip:  0.35 kB
+dist/assets/index-BMFLZ8d_.css     15.12 kB │ gzip:  4.09 kB
+dist/assets/index-CqsQ6-NK.js      63.41 kB │ gzip: 24.73 kB
 dist/assets/markdown-Btou6k2a.js  134.21 kB │ gzip: 57.39 kB
 dist/assets/terminal-DP_gxef0.js  330.51 kB │ gzip: 83.39 kB
-✓ built in 737ms
+✓ built in 733ms
 ```
 
 Install the command from this repository after building the frontend.  
@@ -206,12 +224,11 @@ uv tool install --reinstall .
 
 <!-- 3d450f0088d1 -->
 ```txt
-Resolved 26 packages in 639ms
-   Building imd @ file:///Users/qubaitian/refac/imd
+Resolved 26 packages in 886ms
       Built imd @ file:///Users/qubaitian/refac/imd
-Prepared 26 packages in 440ms
-Uninstalled 26 packages in 91ms
-Installed 26 packages in 18ms
+Prepared 26 packages in 453ms
+Uninstalled 26 packages in 130ms
+Installed 26 packages in 21ms
  ~ annotated-doc==0.0.5
  ~ annotated-types==0.8.0
  ~ anyio==4.15.1
@@ -273,6 +290,27 @@ Unsaved changes stay available when switching documents in the current browser t
 A browser refresh can clear changes that have not reached the service.  
 The browser asks before leaving when there are unsaved changes.  
 Saving rejects an edit if the file changed on disk since it was opened.  
+
+### Copy a document reference
+
+Open Edit or Split and select text in the editor.  
+Press `Cmd+L` to copy a reference such as `@/Users/qubaitian/refac/imd/imd.md:1-3`.  
+The reference contains the absolute workspace path and the document's relative path.  
+A single selected line uses the form `:2-2`.  
+Line numbers refer to Markdown source lines, not wrapped screen lines.  
+Unsaved edits can make these line numbers differ from the file on disk.  
+Copying does not save the document.  
+Preview selections and console input are outside this feature.  
+
+Chrome normally uses `Cmd+L` for its address bar.  
+IMD cancels that default action when the editor receives `Cmd+L` with a selection.  
+The tested Chrome on macOS needs no browser or system configuration.  
+Confirm that IMD shows the copied reference and that pasting produces that reference.  
+If the address bar still receives focus, that browser environment reserves the shortcut before IMD receives it.  
+Changing Chrome's Open Location menu shortcut through macOS App Shortcuts is a possible workaround that needs a separate check in that environment.  
+That change affects the address bar shortcut across Chrome, including other sites.  
+See [Apple's App Shortcuts instructions](https://support.apple.com/guide/mac-help/mchlp2271/mac).  
+Allow clipboard access if Chrome reports that copying failed.  
 
 Only click Run for code you trust.  
 Code can read and change files outside the workspace through the local process.  

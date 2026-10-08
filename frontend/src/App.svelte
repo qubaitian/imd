@@ -1,11 +1,12 @@
 <script>
-  import { workspaceUrl } from './api.js';
+  import { workspaceDirectory, workspaceUrl } from './api.js';
   import { onMount } from 'svelte';
   import MarkdownView from './MarkdownView.svelte';
   import { DocumentSession } from './session.svelte.js';
   import { mergeDocument, prepareOutput } from './document.js';
   import Icon from './Icon.svelte';
   import { renderMarkdown } from './markdown.js';
+  import { copyDocumentReference } from './reference.js';
 
   let documents = $state([]);
   let active = $state(null);
@@ -14,6 +15,7 @@
   let error = $state('');
   let loading = $state(true);
   let saving = $state(false);
+  let referenceStatus = $state('');
   let openRequest = 0;
   const drafts = new Map();
   const sessions = new Map();
@@ -41,6 +43,7 @@
       if (requestId !== openRequest) return;
       if (active) drafts.set(active.path, active);
       active = document.saved === undefined ? { ...document, saved: document.content } : document;
+      referenceStatus = '';
       drafts.set(path, active);
       if (!sessions.has(path)) {
         const draft = active;
@@ -154,6 +157,17 @@
     }
   }
 
+  async function copyReference(event) {
+    const document = active;
+    try {
+      const reference = await copyDocumentReference(event, workspaceDirectory(), document.path);
+      if (reference && active === document) referenceStatus = `Copied ${reference}`;
+    } catch (failure) {
+      referenceStatus = '';
+      error = failure.message;
+    }
+  }
+
   function beforeUnload(event) {
     if (dirty || [...drafts.values()].some((document) => document.content !== document.saved)) {
       event.preventDefault();
@@ -205,7 +219,7 @@
       </div>
       <div class="document-body" class:split={view === 'split'}>
         {#if view !== 'preview'}
-          <div class="editor-pane"><div class="pane-label">MARKDOWN <span>{active.content.split('\n').length} lines</span></div><textarea bind:value={active.content} oninput={() => scheduleSave()} spellcheck="false" aria-label="Markdown editor"></textarea></div>
+          <div class="editor-pane"><div class="pane-label">MARKDOWN <span>{active.content.split('\n').length} lines</span></div><textarea bind:value={active.content} oninput={() => { referenceStatus = ''; scheduleSave(); }} onkeydown={copyReference} spellcheck="false" aria-label="Markdown editor" title="Select text and press Cmd+L to copy a document reference."></textarea></div>
         {/if}
         {#if view !== 'edit'}
           <div class="preview-pane"><div class="preview-meta"><span class="eyebrow">DOCUMENT PREVIEW</span><span class="block-count">{rendered.blocks.length} executable {rendered.blocks.length === 1 ? 'block' : 'blocks'}</span></div>
@@ -214,7 +228,7 @@
           </div>
         {/if}
       </div>
-      <div class="session-footer"><span class:online={session?.connected} class="state-dot"></span><span>{session?.state || 'connecting'}</span><span class="session-directory">{session?.cwd || ''}</span><span>Changes and output save automatically</span></div>
+      <div class="session-footer"><span class:online={session?.connected} class="state-dot"></span><span>{session?.state || 'connecting'}</span><span class="session-directory">{session?.cwd || ''}</span><span class="reference-status" role="status" title={referenceStatus}>{referenceStatus || 'Changes and output save automatically'}</span></div>
     {:else}
       <div class="empty-state"><span class="empty-mark">imd.</span><h1>{loading ? 'Opening your workspace…' : 'Start with a Markdown file.'}</h1><p>Open a document from the sidebar.</p><p>Use a fenced code block marked <code>xonsh</code>, <code>shell</code>, <code>sh</code>, <code>py</code>, or <code>python</code> to run code.</p></div>
     {/if}
