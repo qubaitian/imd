@@ -36,27 +36,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('reconnects through service downtime and accepts a fresh session after restart', () => {
-  const onDocument = vi.fn();
-  const onError = vi.fn();
-  session = new DocumentSession('imd.md', onDocument, onError);
-  sockets[0].message({ type: 'snapshot', state: 'running', cwd: '/notes', runs: [
-    { id: 'old', block_id: 'abc123', status: 'running', output: 'old output' },
-  ] });
-  expect(session.connected).toBe(true);
-  sockets[0].onclose({ code: 1012 });
+it.each([1000, 1006, 1012])('does not reconnect after close code %s', (code) => {
+  session = new DocumentSession('imd.md', vi.fn(), vi.fn());
+  sockets[0].message({ type: 'snapshot', state: 'ready', cwd: '/notes', runs: [] });
+  sockets[0].onclose({ code });
+  vi.advanceTimersByTime(300_000);
+  expect(sockets).toHaveLength(1);
   expect(session.connected).toBe(false);
-  vi.advanceTimersByTime(1000);
-  sockets[1].onclose({ code: 1006 });
-  vi.advanceTimersByTime(1000);
-  expect(sockets).toHaveLength(3);
-  expect(sockets[2].url).toBe(sockets[0].url);
-  sockets[2].message({ type: 'snapshot', state: 'ready', cwd: '/notes', runs: [] });
+  expect(session.state).toBe('disconnected');
+});
+
+it('does not retry a failed initial connection', () => {
+  session = new DocumentSession('imd.md', vi.fn(), vi.fn());
+  sockets[0].onclose({ code: 1006 });
+  vi.advanceTimersByTime(300_000);
+  expect(sockets).toHaveLength(1);
+});
+
+it('connects once when a page creates a new document session', () => {
+  session = new DocumentSession('imd.md', vi.fn(), vi.fn());
+  sockets[0].onclose({ code: 1012 });
+  session.close();
+  session = new DocumentSession('imd.md', vi.fn(), vi.fn());
+  expect(sockets).toHaveLength(2);
+  expect(sockets[1].url).toBe(sockets[0].url);
+  sockets[1].message({ type: 'snapshot', state: 'ready', cwd: '/notes', runs: [] });
   expect(session.connected).toBe(true);
   expect(session.state).toBe('ready');
-  expect(session.runs).toEqual({});
-  expect(onDocument).not.toHaveBeenCalled();
-  expect(onError).not.toHaveBeenCalled();
 });
 
 it('does not reconnect a document that was closed during service downtime', () => {
@@ -65,4 +71,14 @@ it('does not reconnect a document that was closed during service downtime', () =
   session.close();
   vi.advanceTimersByTime(5000);
   expect(sockets).toHaveLength(1);
+});
+
+it('does not retry an unavailable document and shows the service reason', () => {
+  const onError = vi.fn();
+  session = new DocumentSession('interaction.md', vi.fn(), onError);
+  sockets[0].onclose({ code: 1008, reason: 'Document not found. Refresh the document list.' });
+  vi.advanceTimersByTime(60_000);
+  expect(sockets).toHaveLength(1);
+  expect(session.connected).toBe(false);
+  expect(onError).toHaveBeenCalledWith('Document not found. Refresh the document list.');
 });

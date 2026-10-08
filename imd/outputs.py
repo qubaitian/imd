@@ -4,7 +4,7 @@ import re
 
 from markdown_it import MarkdownIt
 
-LANGUAGES = {"xonsh", "shell", "sh", "py", "python"}
+LANGUAGES = {"xonsh", "shell", "sh", "py", "python", "agent"}
 MARKER = re.compile(r"<!--\s*([a-f0-9]{6,32})\s*-->")
 
 
@@ -30,13 +30,22 @@ def output_block(content: str, marker: str) -> dict:
         or output.info.strip() != "txt"
     ):
         raise ValueError("The output marker must follow executable code and precede a txt fence.")
-    return {"id": marker, "code": code.content, "output": output.content, "map": output.map}
+    return {
+        "id": marker, "code": code.content,
+        "language": code.info.strip().split()[0].lower(),
+        "output": output.content, "map": output.map,
+    }
 
 
-def replace_output(content: str, marker: str, text: str, expected_code: str | None = None) -> str:
+def replace_output(
+    content: str, marker: str, text: str, expected_code: str | None = None,
+    expected_language: str | None = None,
+) -> str:
     block = output_block(content, marker)
     if expected_code is not None and block["code"] != expected_code:
         raise ValueError("The code changed during the run. The result was not saved.")
+    if expected_language is not None and block["language"] != expected_language:
+        raise ValueError("The code language changed during the run. The result was not saved.")
     lines = content.splitlines(keepends=True)
     start, end = block["map"]
     opener = re.match(r"^(.*?)(?:`{3,}|~{3,})", lines[start])

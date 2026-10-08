@@ -69,6 +69,23 @@ def test_websocket_requires_a_same_origin_browser(tmp_path):
                 pass
 
 
+def test_missing_document_closes_the_browser_connection_with_a_reason(tmp_path):
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+
+    with (
+        TestClient(create_app(tmp_path), base_url="http://127.0.0.1") as client,
+        client.websocket_connect(
+            "ws://127.0.0.1/api/session?path=interaction.md",
+            headers={"origin": "http://127.0.0.1"},
+        ) as socket,
+    ):
+        with pytest.raises(WebSocketDisconnect) as failure:
+            socket.receive_json()
+        assert failure.value.code == 1008
+        assert failure.value.reason == "Document not found. Refresh the document list."
+
+
 def test_reset_closes_old_connections_and_starts_a_fresh_session(tmp_path):
     (tmp_path / "guide.md").write_text("# Guide\n")
     with TestClient(create_app(tmp_path), base_url="http://127.0.0.1") as client:
@@ -140,6 +157,44 @@ def test_marked_run_saves_plain_output_and_replaces_it_on_the_next_run(tmp_path)
             assert saved["document"]["content"] == file.read_text()
             assert "```txt\nsaved output\n```" in file.read_text()
             assert file.read_text().count("<!-- abc123 -->") == 1
+
+
+def test_marked_agent_blocks_save_prompt_replies_after_sh_configuration(tmp_path):
+    import shlex
+    import sys
+
+    script = tmp_path / "agent.py"
+    script.write_text("import sys\nprint(sys.argv[1] + ':' + sys.argv[2].strip())\n")
+    command = shlex.join([sys.executable, str(script)])
+    source = (
+        f"```sh\nimd set agent first {command} first\n"
+        f"imd set agent continue {command} continue\n```\n"
+        "<!-- abc123 -->\n```txt\n```\n"
+        "```agent\n请审核代码\n```\n<!-- def456 -->\n```txt\n```\n"
+        "```agent\nWhat did I ask?\n```\n<!-- aaa111 -->\n```txt\n```\n"
+    )
+    file = tmp_path / "guide.md"
+    file.write_text(source)
+    with TestClient(create_app(tmp_path), base_url="http://127.0.0.1") as client:
+        for marker, expected in [
+            ("abc123", "Agent commands configured for this session."),
+            ("def456", "first:请审核代码"), ("aaa111", "continue:What did I ask?"),
+        ]:
+            with client.websocket_connect(
+                "ws://127.0.0.1/api/session?path=guide.md",
+                headers={"origin": "http://127.0.0.1"},
+            ) as socket:
+                socket.receive_json()
+                document = client.get("/api/document", params={"path": "guide.md"}).json()
+                socket.send_json({
+                    "type": "run", "id": marker, "block_id": marker,
+                    "code": "raise RuntimeError('do not trust client code')", **document,
+                })
+                result = receive_until(socket, "done")[-1]
+                assert result["status"] == "ok", result["text"]
+                assert result["text"] == expected + "\n"
+                receive_until(socket, "document")
+                assert f"```txt\n{expected}\n```" in file.read_text()
 
 
 def test_output_save_preserves_edits_made_while_running(tmp_path):

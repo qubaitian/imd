@@ -8,6 +8,8 @@ import sys
 import termios
 import traceback
 
+from imd.agents import AgentCommands
+
 
 def main():
     os.setsid()
@@ -23,6 +25,7 @@ def main():
         env={"XONSH_SUBPROC_CMD_RAISE_ERROR": True, "XONSH_INTERACTIVE": False},
     )
     XSH.env["PWD"] = os.getcwd()
+    agent = AgentCommands()
 
     def send(message):
         control.write(json.dumps(message) + "\n")
@@ -39,7 +42,10 @@ def main():
         message = json.loads(line)
         status = "ok"
         try:
-            XSH.execer.exec(message["code"] + "\n", glbs=XSH.ctx, locs=XSH.ctx, filename="<imd>")
+            if not agent.execute(
+                message["code"], message.get("language", "xonsh"), XSH.subproc_uncaptured
+            ):
+                XSH.execer.exec(message["code"] + "\n", glbs=XSH.ctx, locs=XSH.ctx, filename="<imd>")
         except KeyboardInterrupt:
             status = "interrupted"
             print("\nRun interrupted.", flush=True)

@@ -27,6 +27,7 @@ class ConsoleMessage(BaseModel):
     type: str
     id: str = Field(default="", max_length=100)
     code: str = Field(default="", max_length=256_000)
+    language: str = Field(default="xonsh", pattern=r"^(xonsh|shell|sh|py|python|agent)$")
     data: str = Field(default="", max_length=8192)
     columns: int = Field(default=80, ge=2, le=500)
     rows: int = Field(default=24, ge=2, le=200)
@@ -141,8 +142,9 @@ def create_app(root: Path | None = None) -> FastAPI:
         try:
             workspace = open_workspace(workspace)
             document = document_path(path, workspace)
-        except HTTPException:
-            await socket.close(code=1008)
+        except HTTPException as error:
+            await socket.accept()
+            await socket.close(code=1008, reason=f"{error.detail} Refresh the document list.")
             return
         await socket.accept()
         session = await sessions.get(document)
@@ -156,9 +158,9 @@ def create_app(root: Path | None = None) -> FastAPI:
                     await socket.close(code=1012)
                     return
 
-        async def run_code(code, run_id, block_id):
+        async def run_code(code, run_id, block_id, language):
             try:
-                result = await session.run(code, run_id, block_id)
+                result = await session.run(code, run_id, block_id, language=language)
             except RuntimeError as error:
                 session.publish(
                     {"type": "error", "message": str(error), "id": run_id, "block_id": block_id}
@@ -167,7 +169,9 @@ def create_app(root: Path | None = None) -> FastAPI:
             if block_id:
                 try:
                     latest = workspace.read(path)
-                    content = replace_output(latest["content"], block_id, result["text"], code)
+                    content = replace_output(
+                        latest["content"], block_id, result["text"], code, language
+                    )
                     saved = workspace.save(path, content, latest["revision"])
                     session.publish(
                         {"type": "document", "document": saved, "id": run_id, "block_id": block_id}
@@ -196,13 +200,15 @@ def create_app(root: Path | None = None) -> FastAPI:
                         events.put_nowait({"type": "error", "message": "Too many queued runs."})
                         continue
                     code = message.code
+                    language = message.language
                     if message.block_id:
                         try:
                             if message.content is None or message.revision is None:
                                 raise ValueError(
                                     "A marked run needs document content and revision."
                                 )
-                            code = output_block(message.content, message.block_id)["code"]
+                            block = output_block(message.content, message.block_id)
+                            code, language = block["code"], block["language"]
                             saved = workspace.save(path, message.content, message.revision)
                             session.publish({"type": "document", "document": saved})
                         except (ValueError, OSError, Conflict) as error:
@@ -215,7 +221,9 @@ def create_app(root: Path | None = None) -> FastAPI:
                                 }
                             )
                             continue
-                    task = asyncio.create_task(run_code(code, message.id, message.block_id))
+                    task = asyncio.create_task(
+                        run_code(code, message.id, message.block_id, language)
+                    )
                     runs.add(task)
                     task.add_done_callback(runs.discard)
                 elif message.type == "input":

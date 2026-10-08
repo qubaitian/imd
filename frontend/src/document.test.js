@@ -5,6 +5,17 @@ import { renderMarkdown } from './markdown.js';
 const source = '# Note\n\n```py\nprint(42)\n```\n\nKeep this paragraph.\n';
 
 describe('Markdown output blocks', () => {
+  it('keeps agent prompts and their saved output linked', () => {
+    const prompt = '解释一下\nimd set agent first cursor-agent -p\n';
+    const content = `\`\`\`agent\n${prompt}\`\`\`\n`;
+    const marked = prepareOutput(content, 0, 'abc123').content;
+    const saved = replaceOutput(marked, 'abc123', 'Agent reply\n');
+    expect(analyzeDocument(saved).blocks[0]).toMatchObject({
+      language: 'agent', code: prompt, id: 'abc123', output: 'Agent reply\n',
+    });
+    expect(renderMarkdown(saved).outputs).toEqual([{ id: 'abc123', text: 'Agent reply\n' }]);
+  });
+
   it('adds a marker and txt fence directly after the selected block', () => {
     const prepared = prepareOutput(source, 0, 'abc123');
     expect(prepared.id).toBe('abc123');

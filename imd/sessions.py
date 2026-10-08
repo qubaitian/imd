@@ -45,7 +45,10 @@ class Session:
             self._process = await asyncio.create_subprocess_exec(
                 sys.executable,
                 "-u",
-                str(Path(__file__).with_name("worker.py")),
+                "-c",
+                "import sys; sys.path.insert(0, sys.argv.pop(1)); "
+                "from imd.worker import main; main()",
+                str(Path(__file__).resolve().parent.parent),
                 str(child.fileno()),
                 cwd=cwd,
                 stdin=slave,
@@ -159,7 +162,10 @@ class Session:
                     future.set_exception(error)
             self._emit({"type": "closed", "reason": str(error)})
 
-    async def run(self, code: str, run_id: str | None = None, block_id: str | None = None):
+    async def run(
+        self, code: str, run_id: str | None = None, block_id: str | None = None,
+        *, language: str = "xonsh",
+    ):
         run_id = run_id or uuid.uuid4().hex
         self._emit({"type": "queued", "id": run_id, "block_id": block_id})
         async with self._lock:
@@ -174,7 +180,9 @@ class Session:
                 self._runs.pop(next(iter(self._runs)))
             self.state = "running"
             self._emit({"type": "running", "id": run_id, "block_id": block_id, "cwd": self.cwd})
-            self._writer.write((json.dumps({"id": run_id, "code": code}) + "\n").encode())
+            self._writer.write(
+                (json.dumps({"id": run_id, "code": code, "language": language}) + "\n").encode()
+            )
             try:
                 await self._writer.drain()
                 return await asyncio.shield(future)

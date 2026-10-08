@@ -16,9 +16,15 @@ IMD is a local Markdown editor with code execution in the browser.
 **Selection**: A nonempty range of text in the editor.  
 **Document reference**: Plain text in the form `@/absolute/document/path.md:start-end` with inclusive source line numbers starting at 1.  
 **Code block**: A fenced section of a document with a language label.  
-**Executable block**: A code block with the label `xonsh`, `shell`, `sh`, `py`, or `python`.  
+**Agent block**: A code block with the label `agent`.  
+**Executable block**: A code block with the label `xonsh`, `shell`, `sh`, `py`, `python`, or `agent`.  
 **Session**: A persistent xonsh process for one document, with its own working directory, environment, and Python variables.  
+**Session connection**: A WebSocket connection between one browser page and a document session.  
 **Run**: One execution of an executable block inside its document's session.  
+**Agent command**: A program and its fixed arguments configured in a document's session for an external coding agent.  
+**First command**: The agent command for prompts before the first success in a session.  
+**Continue command**: The agent command for later prompts in the same session.  
+**Prompt**: The complete text of an agent block submitted to an agent command after configuration.  
 **Output marker**: A unique hexadecimal identifier in a Markdown comment after an executable block.  
 **Output block**: A `txt` code block after an output marker containing the latest run's plain terminal output.  
 **Console**: The temporary xterm view inside an output block during a run.  
@@ -32,7 +38,10 @@ The browser connects to the IMD service.
 `imd` restarts the IMD service when it is running.  
 The restart process starts outside the document session before stopping the old service.  
 The IMD service runs in the background after the command ends.  
-Existing browser pages reconnect automatically after a restart.  
+A browser page opens one session connection for each document it opens.  
+A failed or closed session connection stays disconnected.  
+The user refreshes the browser page to connect again.  
+A missing document shows a reason in the browser.  
 The command does not open a new browser tab.  
 Restarting the service ends all sessions and clears their state.  
 A directory URL opens the default document and creates an empty file if it is missing.  
@@ -41,12 +50,32 @@ Different directory URLs select different workspaces in the same service.
 A missing directory returns an error.  
 Each document has one session shared by all browser tabs that open that document.  
 Different documents have separate sessions.  
-All executable blocks use xonsh syntax, regardless of their language label.  
+Executable blocks use xonsh syntax unless the block is an agent block or agent configuration.  
 Runs in one session execute in order.  
 A session starts in the document's directory.  
 The session remains available after a browser refresh.  
 Resetting a session clears its state.  
 Stopping the service ends all sessions.  
+
+A `sh` block can configure agent commands with `imd set agent first PROGRAM [ARGUMENTS]` and `imd set agent continue PROGRAM [ARGUMENTS]`.  
+Run the configuration block before running a prompt block.  
+Both commands are required before submitting a prompt.  
+After configuration, the Run button submits each agent block as one prompt argument.  
+An agent block without configuration returns an error.  
+Text inside an agent block is always a prompt, including agent configuration examples.  
+The prompt keeps its complete text, including newlines and quotes.  
+The first command is used until a prompt succeeds.  
+Later prompts use the continue command.  
+A failed or interrupted prompt keeps the current command choice.  
+Setting the first command starts a new sequence of prompts.  
+Configuration blocks contain only configuration lines, blank lines, and shell comments.  
+The first line that is neither blank nor a shell comment identifies a configuration block.  
+Invalid configuration leaves the previous commands unchanged.  
+Agent commands use the session's current directory and environment.  
+Agent output, input, interruption, and saving use the existing console and output block.  
+Use `xonsh`, `shell`, `sh`, `py`, or `python` blocks for code after agent configuration.  
+Agent configuration is shared by browser tabs for the same document.  
+Resetting a session or restarting the service clears its agent configuration.  
 
 The editor opens and saves Markdown files in the workspace.  
 The preview has a Run button for each executable block.  
@@ -67,6 +96,24 @@ Output updates preserve other changes already saved in the document.
 Conflicting edits remain in the editor with a visible error.  
 
 ## ADR
+
+### Agent commands in a document session
+
+Recognize `imd set agent` inside the document worker instead of the service startup command.  
+The worker owns the document's session state.  
+Use agent blocks and their existing Run buttons instead of adding a separate prompt editor.  
+Use the `agent` label instead of inspecting prompt text for configuration commands.  
+A prompt can quote configuration commands without changing their state or needing special escaping.  
+Keep `sh` and the other code labels available for xonsh code after configuration.  
+Keep agent configuration in the session instead of a separate configuration file, as requested.  
+Split command arguments with shlex instead of evaluating shell source.  
+Quoted arguments can contain spaces without adding shell expansion or pipelines.  
+Append the complete prompt as one literal argument instead of inserting it into command source.  
+Prompt text can contain quotes and shell expressions.  
+Use xonsh's existing subprocess runner instead of a second process manager.  
+It preserves the session environment, foreground terminal input, and interruption behavior.  
+Choose the continue command after a successful first prompt instead of after any attempt.  
+A failed or interrupted first attempt may not have created an agent conversation.  
 
 ### Document reference in Chrome
 
@@ -115,7 +162,8 @@ Use a file lock to serialize restarts so simultaneous commands cannot start comp
 Use a pipe to report service readiness or startup failure to an external terminal.  
 A closed pipe from an ended document session does not stop the restart process.  
 Write detached service messages to the service log because the original console may disappear.  
-Keep the existing browser reconnect logic instead of opening a new tab or refreshing the page.  
+Keep existing browser pages open after a restart.  
+The user refreshes the page to connect again.  
 An automatic refresh can lose unsaved edits.  
 
 ### Svelte and xterm
@@ -140,9 +188,21 @@ FastAPI keeps HTTP and WebSocket handling in one async service.
 A separate socket service would split session lifecycle management.  
 Use a pseudo-terminal for session input and output.  
 Use a separate control channel for run completion because command output can contain arbitrary text.  
+Start the worker with the same package directory as the IMD service instead of relying on Python's script import path.  
+A service started from the repository can otherwise mix new worker code with an older installed package.  
 Keep each session in a separate process because xonsh has process-wide state.  
 Bind the service to the loopback interface and require a same-origin browser connection.  
+Accept a same-origin connection before closing it for an unavailable document.  
+Use WebSocket close code 1008 with a reason instead of rejecting that document's handshake.  
+A rejected handshake appears as code 1006 in browsers without the service reason.  
+Keep origin checks before the handshake.  
 Executable blocks have the same permissions as the local service.  
+
+### Session connection after disconnection
+
+Use a browser page refresh to connect again instead of automatic retries, as requested.  
+Repeated rejected connections fill the service log without restoring the session connection.  
+Keep the page disconnected until the user refreshes it.  
 
 ### Markdown preview
 
@@ -185,10 +245,10 @@ cd ..
 
 <!-- 4c4b9dad36a8 -->
 ```txt
-Resolved 37 packages in 4ms
-Checked 36 packages in 13ms
+Resolved 37 packages in 3ms
+Checked 36 packages in 3ms
 
-added 75 packages, and audited 76 packages in 1s
+added 75 packages, and audited 76 packages in 2s
 
 14 packages are looking for funding
   run `npm fund` for details
@@ -207,12 +267,12 @@ ew, or `npm approve-scripts <pkg>` to allow.
 
 vite v7.3.7 building client environment for production...
 ✓ 198 modules transformed.
-dist/index.html                     0.62 kB │ gzip:  0.35 kB
+dist/index.html                     0.62 kB │ gzip:  0.34 kB
 dist/assets/index-BMFLZ8d_.css     15.12 kB │ gzip:  4.09 kB
-dist/assets/index-CqsQ6-NK.js      63.41 kB │ gzip: 24.73 kB
+dist/assets/index-CmPi7ojq.js      63.76 kB │ gzip: 24.85 kB
 dist/assets/markdown-Btou6k2a.js  134.21 kB │ gzip: 57.39 kB
 dist/assets/terminal-DP_gxef0.js  330.51 kB │ gzip: 83.39 kB
-✓ built in 733ms
+✓ built in 778ms
 ```
 
 Install the command from this repository after building the frontend.  
@@ -224,11 +284,12 @@ uv tool install --reinstall .
 
 <!-- 3d450f0088d1 -->
 ```txt
-Resolved 26 packages in 886ms
+Resolved 26 packages in 696ms
+   Building imd @ file:///Users/qubaitian/refac/imd
       Built imd @ file:///Users/qubaitian/refac/imd
-Prepared 26 packages in 453ms
-Uninstalled 26 packages in 130ms
-Installed 26 packages in 21ms
+Prepared 26 packages in 440ms
+Uninstalled 26 packages in 95ms
+Installed 26 packages in 17ms
  ~ annotated-doc==0.0.5
  ~ annotated-types==0.8.0
  ~ anyio==4.15.1
@@ -273,8 +334,8 @@ IMD opens `/Users/qubaitian/refac/imd/imd.md` and creates an empty file if it is
 Use `http://localhost:8000/path/to/notes` for another existing workspace.  
 Encode spaces and special characters in the directory URL.  
 Open <http://localhost:8000> to use the service's starting directory.  
-Run `imd` from a terminal or an executable block to restart the service.  
-The browser reconnects after a brief disconnection.  
+Run `imd` from a terminal or a `xonsh` block to restart the service.  
+Refresh the browser page after a disconnection to connect again.  
 Restarting ends active runs and clears session variables and environment changes.  
 Saved documents remain on disk.  
 The command returns after the service is ready when run from an external terminal.  
@@ -290,6 +351,33 @@ Unsaved changes stay available when switching documents in the current browser t
 A browser refresh can clear changes that have not reached the service.  
 The browser asks before leaving when there are unsaved changes.  
 Saving rejects an edit if the file changed on disk since it was opened.  
+
+### Configure agent commands
+
+Add this configuration to a `sh` block in your document.  
+Click its Run button once.  
+The configuration commands are available inside IMD document runs.  
+
+```sh
+# Agent commands for this document session.
+imd set agent first cursor-agent -f -p --model grok-4.7-high
+imd set agent continue cursor-agent -f -p --continue
+```
+
+Add each prompt to an agent block and click Run.  
+
+```agent
+Please review the code.
+```
+
+The first successful prompt uses the first command.  
+Later prompts use the continue command.  
+The agent program must be installed and available in the session's PATH.  
+The configured agent program owns its conversation history.  
+IMD chooses the command and does not manage the agent program's conversation identifiers.  
+Use shell comments for explanations inside a configuration block.  
+Use `sh` or `xonsh` blocks for ordinary commands after configuring an agent.  
+Run the configuration block again after resetting the session or restarting the service.  
 
 ### Copy a document reference
 

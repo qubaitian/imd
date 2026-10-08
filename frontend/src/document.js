@@ -1,6 +1,6 @@
 import MarkdownIt from 'markdown-it';
 
-export const languages = new Set(['xonsh', 'shell', 'sh', 'py', 'python']);
+export const languages = new Set(['xonsh', 'shell', 'sh', 'py', 'python', 'agent']);
 const markerPattern = /^<!--\s*([a-f0-9]{6,32})\s*-->$/;
 
 export function analyzeDocument(content) {

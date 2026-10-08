@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { workspaceDirectory, workspaceUrl } from './api.js';
+import { readResponse, workspaceDirectory, workspaceUrl } from './api.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -17,4 +17,16 @@ it('keeps the directory URL and document path separate', () => {
 
 it('supports the filesystem root directory', () => {
   expect(workspaceDirectory('/')).toBe('/');
+});
+
+it('reports a plain HTTP error with the service log instead of a JSON error', async () => {
+  await expect(readResponse(new Response('Internal Server Error', { status: 500 })))
+    .rejects.toThrow('The IMD service returned HTTP 500. See the service log.');
+});
+
+it('preserves JSON API errors and successful responses', async () => {
+  await expect(readResponse(new Response(JSON.stringify({ detail: 'The document changed.' }), { status: 409 })))
+    .rejects.toThrow('The document changed.');
+  await expect(readResponse(new Response(JSON.stringify({ content: '# Note' }))))
+    .resolves.toEqual({ content: '# Note' });
 });

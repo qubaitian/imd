@@ -28,6 +28,16 @@ def test_updates_output_inside_a_blockquote():
     assert output_block(updated, "abc123")["code"] == "print(42)\n"
 
 
+def test_output_block_includes_the_code_language():
+    source = SOURCE.replace("```xonsh", "```SH extra")
+    assert output_block(source, "3f9a1c")["language"] == "sh"
+
+
+def test_output_save_rejects_a_changed_language():
+    with pytest.raises(ValueError, match="language changed"):
+        replace_output(SOURCE, "3f9a1c", "reply", "print('hello')\n", "sh")
+
+
 def test_rejects_ambiguous_markers_and_changed_or_removed_code():
     for source in [
         SOURCE + SOURCE,

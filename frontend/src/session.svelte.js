@@ -1,4 +1,4 @@
-import { workspaceUrl } from './api.js';
+import { readResponse, workspaceUrl } from './api.js';
 
 export class DocumentSession {
   connected = $state(false);
@@ -47,12 +47,11 @@ export class DocumentSession {
         this.state = 'closed';
       }
     };
-    this.socket.onclose = ({ code }) => {
+    this.socket.onclose = ({ code, reason }) => {
       if (this.disposed) return;
       this.connected = false;
       this.state = 'disconnected';
-      if (code === 1008) this.onError('Cannot connect to this document session.');
-      else this.reconnect = setTimeout(() => this.connect(), 1000);
+      if (code === 1008) this.onError(reason || 'Cannot connect to this document session.');
     };
   }
 
@@ -81,14 +80,17 @@ export class DocumentSession {
   }
 
   async reset() {
-    const response = await fetch(workspaceUrl(`/api/session/reset?path=${encodeURIComponent(this.path)}`), { method: 'POST' });
-    if (!response.ok) this.onError((await response.json()).detail);
-    else this.runs = {};
+    try {
+      const response = await fetch(workspaceUrl(`/api/session/reset?path=${encodeURIComponent(this.path)}`), { method: 'POST' });
+      await readResponse(response);
+      this.runs = {};
+    } catch (failure) {
+      this.onError(failure.message);
+    }
   }
 
   close() {
     this.disposed = true;
-    clearTimeout(this.reconnect);
     this.socket?.close();
   }
 }

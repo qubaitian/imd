@@ -29,6 +29,21 @@ async def test_runs_keep_directory_environment_and_python_variables(tmp_path):
         await session.close()
 
 
+async def test_worker_uses_the_service_package_instead_of_an_older_install(tmp_path, monkeypatch):
+    old = tmp_path / "old-install"
+    package = old / "imd"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    monkeypatch.setenv("PYTHONPATH", str(old))
+    session = await Session.open(tmp_path)
+    try:
+        result = await session.run("print('same package')")
+        assert result["status"] == "ok"
+        assert result["text"] == "same package\n"
+    finally:
+        await session.close()
+
+
 async def test_documents_are_isolated_and_reopening_keeps_the_session(tmp_path):
     sessions = Sessions()
     try:

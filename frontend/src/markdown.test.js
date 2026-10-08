@@ -9,7 +9,7 @@ describe('executable blocks', () => {
   });
 
   it('accepts every agreed label and preserves the exact code', () => {
-    for (const language of ['xonsh', 'shell', 'sh', 'py', 'python']) {
+    for (const language of ['xonsh', 'shell', 'sh', 'py', 'python', 'agent']) {
       const { html, blocks } = renderMarkdown(`\`\`\`${language}\ncd child\n$VALUE = 'kept'\n\`\`\``);
       expect(blocks.map(({ language, code }) => ({ language, code }))).toEqual([{ language, code: "cd child\n$VALUE = 'kept'\n" }]);
       expect(html).toContain('data-block="0"');
