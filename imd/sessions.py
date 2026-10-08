@@ -15,6 +15,8 @@ import termios
 import uuid
 from pathlib import Path
 
+from imd.terminal import TerminalCapture
+
 
 class Session:
     def __init__(self, cwd: Path):
@@ -26,6 +28,10 @@ class Session:
         self._pending: dict[str, asyncio.Future] = {}
         self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         self._closed = False
+        self._columns, self._rows = 80, 24
+        self._capture = None
+        self._current = None
+        self._runs = {}
 
     @classmethod
     async def open(cls, cwd: Path):
@@ -67,7 +73,13 @@ class Session:
         return self
 
     def snapshot(self):
-        return {"type": "snapshot", "output": self.output, "state": self.state, "cwd": self.cwd}
+        return {
+            "type": "snapshot",
+            "output": self.output,
+            "state": self.state,
+            "cwd": self.cwd,
+            "runs": list(self._runs.values()),
+        }
 
     def subscribe(self):
         queue = asyncio.Queue(maxsize=1024)
@@ -77,6 +89,13 @@ class Session:
 
     def unsubscribe(self, queue):
         self._listeners.discard(queue)
+
+    def publish(self, event):
+        if event["type"] == "save_error":
+            run = self._runs.get(event.get("block_id"))
+            if run and run["id"] == event.get("id"):
+                run["saveError"] = event["message"]
+        self._emit(event)
 
     def _emit(self, event):
         for queue in tuple(self._listeners):
@@ -102,18 +121,32 @@ class Session:
                 return
             text = self._decoder.decode(data)
             self.output = (self.output + text)[-1_000_000:]
-            self._emit({"type": "output", "data": text})
+            if self._current:
+                self._current["output"] = (self._current["output"] + text)[-1_000_000:]
+                self._capture.write(text)
+            self._emit(
+                {
+                    "type": "output",
+                    "data": text,
+                    "id": self._current["id"] if self._current else None,
+                    "block_id": self._current["block_id"] if self._current else None,
+                }
+            )
 
     async def _read_control(self):
         try:
             while line := await self._reader.readline():
                 message = json.loads(line)
                 self.cwd = message["cwd"]
-                self.state = "ready"
                 self._read_output()
+                self.state = "ready"
                 if message["type"] == "ready":
                     self._ready.set_result(None)
                 elif future := self._pending.get(message["id"]):
+                    message["block_id"] = self._current["block_id"]
+                    message["text"] = self._capture.text()
+                    self._current.update(message)
+                    self._current = None
                     future.set_result(message)
                     self._emit(message)
         finally:
@@ -126,16 +159,21 @@ class Session:
                     future.set_exception(error)
             self._emit({"type": "closed", "reason": str(error)})
 
-    async def run(self, code: str, run_id: str | None = None):
+    async def run(self, code: str, run_id: str | None = None, block_id: str | None = None):
         run_id = run_id or uuid.uuid4().hex
-        self._emit({"type": "queued", "id": run_id})
+        self._emit({"type": "queued", "id": run_id, "block_id": block_id})
         async with self._lock:
             if self._closed or self.state == "closed":
                 raise RuntimeError("The session is closed.")
             future = self._loop.create_future()
             self._pending[run_id] = future
+            self._capture = TerminalCapture(self._columns, self._rows)
+            self._current = {"id": run_id, "block_id": block_id, "output": "", "status": "running"}
+            self._runs[block_id or run_id] = self._current
+            while len(self._runs) > 100:
+                self._runs.pop(next(iter(self._runs)))
             self.state = "running"
-            self._emit({"type": "running", "id": run_id, "cwd": self.cwd})
+            self._emit({"type": "running", "id": run_id, "block_id": block_id, "cwd": self.cwd})
             self._writer.write((json.dumps({"id": run_id, "code": code}) + "\n").encode())
             try:
                 await self._writer.drain()
@@ -149,6 +187,9 @@ class Session:
 
     def resize(self, columns: int, rows: int):
         if not self._closed:
+            self._columns, self._rows = columns, rows
+            if self._capture:
+                self._capture.resize(columns, rows)
             fcntl.ioctl(self._master, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
 
     def interrupt(self):

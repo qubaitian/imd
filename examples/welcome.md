@@ -17,6 +17,11 @@ name = "Markdown"
 print(f"Hello, {name}.")
 ```
 
+<!-- 1f8adaa5bc23 -->
+```txt
+Hello, Markdown.
+```
+
 ## Bring your shell along
 
 Shell commands and Python can share the same session.
@@ -44,7 +49,7 @@ print('Environment:', $IMD_GREETING)
 
 ## Ask a question
 
-Click Run, then type your answer in the console below.
+Click Run, then type your answer in the output block.
 
 ```shell
 answer = input('What would you like to build? ')

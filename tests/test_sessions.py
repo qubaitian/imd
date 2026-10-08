@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import shutil
 import signal
 
 import pytest
@@ -164,3 +165,51 @@ async def test_close_ends_background_commands(tmp_path):
                 os.kill(pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+
+
+async def test_output_events_and_reconnection_snapshot_are_linked_to_the_run(tmp_path):
+    session = await Session.open(tmp_path)
+    try:
+        events = session.subscribe()
+        await session.run("print('first result')", "run-one", "abc123")
+        result = await session.run("print('second result')", "run-two", "def456")
+        assert result["text"] == "second result\n"
+        assert result["block_id"] == "def456"
+        outputs = []
+        while not events.empty():
+            event = events.get_nowait()
+            if event["type"] == "output":
+                outputs.append(event)
+        assert any(
+            event["id"] == "run-one" and "first result" in event["data"] for event in outputs
+        )
+        assert any(
+            event["id"] == "run-two" and "second result" in event["data"] for event in outputs
+        )
+        saved = session.snapshot()["runs"]
+        assert saved[0]["block_id"] == "abc123"
+        assert saved[1]["text"] == "second result\n"
+    finally:
+        await session.close()
+
+
+@pytest.mark.skipif(shutil.which("vim") is None, reason="Vim is not installed.")
+async def test_vim_can_edit_a_file_inside_a_run(tmp_path):
+    file = tmp_path / "vim.txt"
+    session = await Session.open(tmp_path)
+    try:
+        session.resize(80, 24)
+        run = asyncio.create_task(
+            session.run("print('before vim')\nvim -Nu NONE -i NONE -n vim.txt\nprint('after vim')")
+        )
+        await output_contains(session, "\x1b[?1049h")
+        session.resize(56, 20)
+        session.write("iEdited in Vim\x1b:wq\n")
+        result = await asyncio.wait_for(run, 10)
+        assert result["status"] == "ok"
+        assert file.read_text() == "Edited in Vim\n"
+        assert "before vim" in result["text"]
+        assert "after vim" in result["text"]
+        assert "Edited in Vim" not in result["text"]
+    finally:
+        await session.close()

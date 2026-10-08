@@ -10,8 +10,11 @@ IMD is a local Markdown editor with code execution in the browser.
 **Executable block**: A code block with the label `xonsh`, `shell`, `sh`, `py`, or `python`.  
 **Session**: A persistent xonsh process for one document, with its own working directory, environment, and Python variables.  
 **Run**: One execution of an executable block inside its document's session.  
-**Console**: The xterm view of a session's output and input.  
-**IMD**: A browser editor for workspace documents with a console for each document's session.  
+**Output marker**: A unique hexadecimal identifier in a Markdown comment after an executable block.  
+**Output block**: A `txt` code block after an output marker containing the latest run's plain terminal output.  
+**Console**: The temporary xterm view inside an output block during a run.  
+**Terminal host**: The container without padding inside a console that defines the terminal screen's available space.  
+**IMD**: A browser editor for workspace documents with executable blocks and output blocks.  
 
 ## DESIGN
 
@@ -27,7 +30,16 @@ Stopping the service ends all sessions.
 
 The editor opens and saves Markdown files in the workspace.  
 The preview has a Run button for each executable block.  
-The console supports live output, keyboard input, resizing, and interruption.  
+Each executable block has an output marker and an output block after its first run.  
+The output block contains a console while its run is active.  
+The console supports live output, keyboard input, resizing, interruption, and full-screen programs such as Vim.  
+After the run, the output block contains plain text from the normal terminal screen and scrollback.  
+The alternate terminal screen used by Vim is not part of the saved output.  
+Another run replaces the same output block and keeps its output marker.  
+The service automatically saves output when the run ends, even if the browser disconnects.  
+The editor automatically saves changes after a short pause.  
+Output updates preserve other changes already saved in the document.  
+Conflicting edits remain in the editor with a visible error.  
 
 ## ADR
 
@@ -65,6 +77,22 @@ Disable raw HTML and sanitize the preview with DOMPurify because documents are u
 Use Vitest because it uses the frontend's Vite module pipeline.  
 Disable the xonsh pytest plugin because these tests use the session interface instead of xonsh test files.  
 
+### Output inside Markdown
+
+Use a Markdown comment and a `txt` fence instead of a separate result file.  
+A document remains readable in other Markdown tools.  
+Use a stable output marker instead of a code block's position because edits can move code blocks.  
+Use xterm during a run because a text fence alone cannot handle cursor movement or Vim.  
+Use a terminal parser in the service to save plain output instead of terminal control sequences.  
+Use pyte for terminal state instead of removing escape codes with text patterns.  
+Text patterns cannot preserve cursor edits or restore the normal screen after Vim.  
+Use morphdom to update the preview while preserving mounted output blocks.  
+Replacing the preview HTML during a run would destroy the active xterm.  
+Use a terminal host without padding because xterm's FitAddon counts its parent container's padding as available screen space.  
+Keep console padding outside the terminal host so Vim's last row and rightmost columns remain visible.  
+Keep output saving in the service so a browser disconnect does not lose a completed result.  
+Replace the latest output instead of appending run history, as requested.  
+
 ## RUN
 
 Install uv and Node.js 20.19 or later.  
@@ -94,9 +122,10 @@ Use `uv run imd --root /path/to/notes` for your own workspace.
 Use `--port 8080` to choose another port.  
 Open files from the sidebar.  
 Use Edit or Split to change a document.  
-Save with the Save button or `Cmd+S` on macOS and `Ctrl+S` on Linux.  
+Changes save automatically after a short pause.  
+Use the Save button or `Cmd+S` on macOS and `Ctrl+S` on Linux to save immediately.  
 Unsaved changes stay available when switching documents in the current browser tab.  
-A browser refresh clears unsaved changes.  
+A browser refresh can clear changes that have not reached the service.  
 The browser asks before leaving when there are unsaved changes.  
 Saving rejects an edit if the file changed on disk since it was opened.  
 

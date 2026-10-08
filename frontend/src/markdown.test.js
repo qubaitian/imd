@@ -11,7 +11,7 @@ describe('executable blocks', () => {
   it('accepts every agreed label and preserves the exact code', () => {
     for (const language of ['xonsh', 'shell', 'sh', 'py', 'python']) {
       const { html, blocks } = renderMarkdown(`\`\`\`${language}\ncd child\n$VALUE = 'kept'\n\`\`\``);
-      expect(blocks).toEqual([{ language, code: "cd child\n$VALUE = 'kept'\n" }]);
+      expect(blocks.map(({ language, code }) => ({ language, code }))).toEqual([{ language, code: "cd child\n$VALUE = 'kept'\n" }]);
       expect(html).toContain('data-block="0"');
       expect(html).toContain('Run');
     }
@@ -19,7 +19,7 @@ describe('executable blocks', () => {
 
   it('keeps other blocks as examples and handles nested fences', () => {
     const { html, blocks } = renderMarkdown('```js\nalert(1)\n```\n\n> ```py\n> print(42)\n> ```');
-    expect(blocks).toEqual([{ language: 'py', code: 'print(42)\n' }]);
+    expect(blocks.map(({ language, code }) => ({ language, code }))).toEqual([{ language: 'py', code: 'print(42)\n' }]);
     expect(html.match(/data-block=/g)).toHaveLength(1);
   });
 

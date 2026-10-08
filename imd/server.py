@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
+from imd.outputs import output_block, replace_output
 from imd.sessions import Sessions
 from imd.workspace import Conflict, Workspace
 
@@ -29,6 +30,9 @@ class ConsoleMessage(BaseModel):
     data: str = Field(default="", max_length=8192)
     columns: int = Field(default=80, ge=2, le=500)
     rows: int = Field(default=24, ge=2, le=200)
+    block_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{6,32}$")
+    content: str | None = Field(default=None, max_length=4_000_000)
+    revision: str | None = None
 
 
 def local_host(host: str) -> bool:
@@ -94,7 +98,10 @@ def create_app(root: Path) -> FastAPI:
     async def save_document(document: SaveDocument):
         document_path(document.path)
         try:
-            return workspace.save(document.path, document.content, document.revision)
+            saved = workspace.save(document.path, document.content, document.revision)
+            session = await sessions.get(document_path(document.path))
+            session.publish({"type": "document", "document": saved})
+            return saved
         except Conflict as error:
             raise HTTPException(409, str(error)) from error
         except (OSError, UnicodeError) as error:
@@ -129,12 +136,32 @@ def create_app(root: Path) -> FastAPI:
                     await socket.close(code=1012)
                     return
 
-        async def run_code(code, run_id):
+        async def run_code(code, run_id, block_id):
             try:
-                await session.run(code, run_id)
+                result = await session.run(code, run_id, block_id)
             except RuntimeError as error:
-                if not events.full():
-                    events.put_nowait({"type": "error", "message": str(error), "id": run_id})
+                session.publish(
+                    {"type": "error", "message": str(error), "id": run_id, "block_id": block_id}
+                )
+                return
+            if block_id:
+                try:
+                    latest = workspace.read(path)
+                    content = replace_output(latest["content"], block_id, result["text"], code)
+                    saved = workspace.save(path, content, latest["revision"])
+                    session.publish(
+                        {"type": "document", "document": saved, "id": run_id, "block_id": block_id}
+                    )
+                except (ValueError, OSError, Conflict) as error:
+                    session.publish(
+                        {
+                            "type": "save_error",
+                            "message": str(error),
+                            "id": run_id,
+                            "block_id": block_id,
+                            "text": result["text"],
+                        }
+                    )
 
         sender = asyncio.create_task(send_events())
         try:
@@ -148,7 +175,27 @@ def create_app(root: Path) -> FastAPI:
                     if len(runs) >= 100:
                         events.put_nowait({"type": "error", "message": "Too many queued runs."})
                         continue
-                    task = asyncio.create_task(run_code(message.code, message.id))
+                    code = message.code
+                    if message.block_id:
+                        try:
+                            if message.content is None or message.revision is None:
+                                raise ValueError(
+                                    "A marked run needs document content and revision."
+                                )
+                            code = output_block(message.content, message.block_id)["code"]
+                            saved = workspace.save(path, message.content, message.revision)
+                            session.publish({"type": "document", "document": saved})
+                        except (ValueError, OSError, Conflict) as error:
+                            events.put_nowait(
+                                {
+                                    "type": "error",
+                                    "message": str(error),
+                                    "id": message.id,
+                                    "block_id": message.block_id,
+                                }
+                            )
+                            continue
+                    task = asyncio.create_task(run_code(code, message.id, message.block_id))
                     runs.add(task)
                     task.add_done_callback(runs.discard)
                 elif message.type == "input":

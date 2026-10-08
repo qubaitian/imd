@@ -1,7 +1,8 @@
 <script>
   import { onMount } from 'svelte';
-  import DOMPurify from 'dompurify';
-  import Console from './Console.svelte';
+  import MarkdownView from './MarkdownView.svelte';
+  import { DocumentSession } from './session.svelte.js';
+  import { mergeDocument, prepareOutput } from './document.js';
   import Icon from './Icon.svelte';
   import { renderMarkdown } from './markdown.js';
 
@@ -12,14 +13,14 @@
   let error = $state('');
   let loading = $state(true);
   let saving = $state(false);
-  let connected = $state(false);
-  let statuses = $state({});
-  let consoleView = $state();
   let openRequest = 0;
   const drafts = new Map();
-  const runBlocks = new Map();
-  let rendered = $derived(renderMarkdown(active?.content || '', statuses, connected));
-  let html = $derived(DOMPurify.sanitize(rendered.html));
+  const sessions = new Map();
+  const timers = new Map();
+  const pendingSaves = new Map();
+  let session = $derived(active ? sessions.get(active.path) : null);
+  let statuses = $derived(Object.fromEntries(renderMarkdown(active?.content || '').blocks.map((block, index) => [index, session?.runs[block.id] || {}])));
+  let rendered = $derived(renderMarkdown(active?.content || '', statuses, session?.connected || false));
   let dirty = $derived(active && active.content !== active.saved);
   let filtered = $derived(documents.filter((path) => path.toLowerCase().includes(query.toLowerCase())));
 
@@ -39,8 +40,11 @@
       if (requestId !== openRequest) return;
       if (active) drafts.set(active.path, active);
       active = document.saved === undefined ? { ...document, saved: document.content } : document;
-      statuses = {};
-      runBlocks.clear();
+      drafts.set(path, active);
+      if (!sessions.has(path)) {
+        const draft = active;
+        sessions.set(path, new DocumentSession(path, (remote) => applyDocument(draft, remote), (message) => error = message));
+      }
       localStorage.setItem('imd-document', path);
     } catch (failure) {
       if (requestId === openRequest) error = failure.message;
@@ -55,52 +59,95 @@
     }
   }
 
-  async function save() {
-    if (!active || saving) return;
-    saving = true;
-    error = '';
-    const document = active;
-    const content = document.content;
+  function applyDocument(document, remote) {
+    if (document.revision === remote.revision) return;
     try {
-      const saved = await request('/api/document', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: document.path, content, revision: document.revision }),
-      });
-      document.revision = saved.revision;
-      document.saved = saved.content;
+      if (remote.content === document.savingContent) {
+        document.saved = remote.content;
+        document.revision = remote.revision;
+        if (document.content !== document.saved) scheduleSave(document);
+        return;
+      }
+      document.content = mergeDocument(document.content, document.saved, remote.content);
+      document.saved = remote.content;
+      document.revision = remote.revision;
+      document.conflict = false;
+      if (document.content !== document.saved) scheduleSave(document);
     } catch (failure) {
+      document.conflict = true;
       error = failure.message;
-    } finally {
-      saving = false;
     }
   }
 
-  function runBlock(event) {
+  function scheduleSave(document = active) {
+    if (!document) return;
+    clearTimeout(timers.get(document.path));
+    timers.set(document.path, setTimeout(() => save(document), 700));
+  }
+
+  async function save(document = active) {
+    if (!document) return;
+    clearTimeout(timers.get(document.path));
+    if (pendingSaves.has(document.path)) {
+      await pendingSaves.get(document.path);
+      if (document.content !== document.saved && !document.conflict) return save(document);
+      return;
+    }
+    if (document.content === document.saved || document.conflict) return;
+    saving = true;
+    const task = (async () => {
+      const content = document.content;
+      const revision = document.revision;
+      document.savingContent = content;
+      try {
+        const saved = await request('/api/document', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: document.path, content, revision }),
+        });
+        if (document.revision === revision) {
+          document.revision = saved.revision;
+          document.saved = saved.content;
+        }
+      } catch (failure) {
+        if (document.revision === revision || document.conflict) {
+          document.conflict = true;
+          error = failure.message;
+        }
+      } finally {
+        document.savingContent = undefined;
+      }
+    })();
+    pendingSaves.set(document.path, task);
+    await task;
+    pendingSaves.delete(document.path);
+    saving = pendingSaves.size > 0;
+    if (document.content !== document.saved && !document.conflict) scheduleSave(document);
+  }
+
+  async function runBlock(event) {
     const button = event.target.closest?.('button[data-block]');
-    if (!button || button.disabled || !connected) return;
+    if (!button || button.disabled || !session?.connected) return;
     const index = Number(button.dataset.block);
     const block = rendered.blocks[index];
     if (!block) return;
-    const id = crypto.randomUUID();
-    if (consoleView.run(block.code, id)) {
-      runBlocks.set(id, index);
-      statuses[index] = { id, status: 'queued' };
+    const document = active;
+    const connection = session;
+    try {
+      await save(document);
+      if (document.conflict) return;
+      const prepared = prepareOutput(document.content, index, crypto.randomUUID().replaceAll('-', '').slice(0, 12));
+      document.content = prepared.content;
+      if (!connection.run(document, prepared.id)) {
+        error = 'The session is disconnected. Your changes are kept.';
+        scheduleSave(document);
+      }
+    } catch (failure) {
+      error = failure.message;
     }
-  }
-
-  function runEvent(event) {
-    if (event.type === 'reset') {
-      statuses = {};
-      runBlocks.clear();
-      return;
-    }
-    const index = runBlocks.get(event.id);
-    if (index === undefined || statuses[index]?.id !== event.id) return;
-    statuses[index] = { id: event.id, status: event.status || event.type };
-    if (event.type === 'done' || event.type === 'error') runBlocks.delete(event.id);
   }
 
   function keydown(event) {
+    if (event.target?.closest?.('.xterm')) return;
     if ((event.metaKey || event.ctrlKey) && event.key === 's') {
       event.preventDefault();
       save();
@@ -122,6 +169,10 @@
       if (first) await open(first);
       loading = false;
     })();
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      for (const connection of sessions.values()) connection.close();
+    };
   });
 </script>
 
@@ -150,23 +201,22 @@
         <div class="document-title"><Icon name="file" size={21} /><h1>{active.path.split('/').pop()}</h1><span class="save-state">{dirty ? 'Unsaved' : 'Saved'}</span></div>
         <div class="document-controls">
           <div class="view-toggle" aria-label="Document view">{#each ['preview', 'split', 'edit'] as mode}<button class:selected={view === mode} onclick={() => view = mode}>{mode === 'preview' ? 'Preview' : mode === 'split' ? 'Split' : 'Edit'}</button>{/each}</div>
-          <button class="save-button" onclick={save} disabled={!dirty || saving}><Icon name="save" size={15} />{saving ? 'Saving…' : 'Save'}</button>
+          <button class="session-reset" onclick={() => session?.reset()} disabled={!session?.connected} title="Clear the document session"><Icon name="reset" size={14} /> Reset session</button>
+          <button class="save-button" onclick={() => save()} disabled={!dirty || saving}><Icon name="save" size={15} />{saving ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
       <div class="document-body" class:split={view === 'split'}>
         {#if view !== 'preview'}
-          <div class="editor-pane"><div class="pane-label">MARKDOWN <span>{active.content.split('\n').length} lines</span></div><textarea bind:value={active.content} oninput={() => statuses = {}} spellcheck="false" aria-label="Markdown editor"></textarea></div>
+          <div class="editor-pane"><div class="pane-label">MARKDOWN <span>{active.content.split('\n').length} lines</span></div><textarea bind:value={active.content} oninput={() => scheduleSave()} spellcheck="false" aria-label="Markdown editor"></textarea></div>
         {/if}
         {#if view !== 'edit'}
           <div class="preview-pane"><div class="preview-meta"><span class="eyebrow">DOCUMENT PREVIEW</span><span class="block-count">{rendered.blocks.length} executable {rendered.blocks.length === 1 ? 'block' : 'blocks'}</span></div>
-            <!-- Run buttons are delegated from the rendered Markdown. -->
-            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-            <article class="markdown" class:offline={!connected} onclick={runBlock}>{@html html}</article>
+            {#key active.path}<MarkdownView {rendered} {session} onrun={runBlock} />{/key}
             <div class="preview-end"><span></span><Icon name="file" size={13} /><span></span></div>
           </div>
         {/if}
       </div>
-      {#key active.path}<Console bind:this={consoleView} path={active.path} bind:connected onrun={runEvent} onerror={(message) => error = message} />{/key}
+      <div class="session-footer"><span class:online={session?.connected} class="state-dot"></span><span>{session?.state || 'connecting'}</span><span class="session-directory">{session?.cwd || ''}</span><span>Changes and output save automatically</span></div>
     {:else}
       <div class="empty-state"><span class="empty-mark">imd.</span><h1>{loading ? 'Opening your workspace…' : 'Start with a Markdown file.'}</h1><p>Open a document from the sidebar.</p><p>Use a fenced code block marked <code>xonsh</code>, <code>shell</code>, <code>sh</code>, <code>py</code>, or <code>python</code> to run code.</p></div>
     {/if}

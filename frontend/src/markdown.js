@@ -1,18 +1,18 @@
-import MarkdownIt from 'markdown-it';
-
-const executable = new Set(['xonsh', 'shell', 'sh', 'py', 'python']);
+import { analyzeDocument } from './document.js';
 
 export function renderMarkdown(content, statuses = {}, connected = true) {
-  const markdown = new MarkdownIt({ html: false });
-  const blocks = [];
+  const { markdown, tokens, blocks, markers, outputs } = analyzeDocument(content);
   const escape = markdown.utils.escapeHtml;
   markdown.renderer.rules.fence = (tokens, index) => {
     const token = tokens[index];
     const language = token.info.trim().split(/\s+/)[0].toLowerCase();
     let button = '<span class="example-label">Example</span>';
-    if (executable.has(language)) {
-      const block = blocks.length;
-      blocks.push({ language, code: token.content });
+    if (outputs.has(token)) {
+      const output = outputs.get(token);
+      return `<section class="output-block"><div data-output-slot="${output.id}"></div></section>\n`;
+    }
+    const block = blocks.findIndex((candidate) => candidate.token === token);
+    if (block !== -1) {
       const status = statuses[block]?.status ?? 'idle';
       const label = { queued: 'Queued', running: 'Running', ok: 'Run again', error: 'Retry', interrupted: 'Run again' }[status] ?? 'Run';
       const disabled = !connected || status === 'queued' || status === 'running';
@@ -20,5 +20,8 @@ export function renderMarkdown(content, statuses = {}, connected = true) {
     }
     return `<section class="code-block"><div class="code-header"><span class="code-language">${escape(language || 'text')}</span>${button}</div><pre><code>${escape(token.content)}</code></pre></section>\n`;
   };
-  return { html: markdown.render(content), blocks };
+  markdown.renderer.rules.html_block = (tokens, index) => markers.has(tokens[index]) ? '' : escape(tokens[index].content);
+  markdown.renderer.rules.html_inline = (tokens, index) => escape(tokens[index].content);
+  return { html: markdown.renderer.render(tokens, markdown.options, {}), blocks,
+    outputs: [...outputs.values()].map((block) => ({ id: block.id, text: block.output })) };
 }

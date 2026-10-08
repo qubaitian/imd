@@ -5,6 +5,8 @@ description = "A local Markdown editor with persistent xonsh sessions"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115,<1",
+  "markdown-it-py>=3,<5",
+  "pyte>=0.8,<1",
   "uvicorn[standard]>=0.34,<1",
   "xonsh>=0.19,<1",
 ]

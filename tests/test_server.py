@@ -1,3 +1,5 @@
+import time
+
 from fastapi.testclient import TestClient
 
 from imd.server import create_app
@@ -117,3 +119,103 @@ def test_two_browser_tabs_share_a_document_session(tmp_path):
         for socket in [first, second]:
             messages = receive_until(socket, "done")
             assert "shared=42" in "".join(m.get("data", "") for m in messages)
+
+
+def test_marked_run_saves_plain_output_and_replaces_it_on_the_next_run(tmp_path):
+    source = "```py\nprint('saved output')\n```\n\n<!-- abc123 -->\n```txt\nold output\n```\n"
+    file = tmp_path / "guide.md"
+    file.write_text(source)
+    with (
+        TestClient(create_app(tmp_path), base_url="http://127.0.0.1") as client,
+        client.websocket_connect(
+            "ws://127.0.0.1/api/session?path=guide.md", headers={"origin": "http://127.0.0.1"}
+        ) as socket,
+    ):
+        socket.receive_json()
+        for run_id in ["first", "second"]:
+            document = client.get("/api/document", params={"path": "guide.md"}).json()
+            socket.send_json({"type": "run", "id": run_id, "block_id": "abc123", **document})
+            receive_until(socket, "done")
+            saved = receive_until(socket, "document")[-1]
+            assert saved["document"]["content"] == file.read_text()
+            assert "```txt\nsaved output\n```" in file.read_text()
+            assert file.read_text().count("<!-- abc123 -->") == 1
+
+
+def test_output_save_preserves_edits_made_while_running(tmp_path):
+    source = "```py\nanswer = input('Ready? ')\nprint(answer)\n```\n<!-- abc123 -->\n```txt\n```\n\nOriginal paragraph.\n"
+    file = tmp_path / "guide.md"
+    file.write_text(source)
+    with (
+        TestClient(create_app(tmp_path), base_url="http://127.0.0.1") as client,
+        client.websocket_connect(
+            "ws://127.0.0.1/api/session?path=guide.md", headers={"origin": "http://127.0.0.1"}
+        ) as socket,
+    ):
+        socket.receive_json()
+        document = client.get("/api/document", params={"path": "guide.md"}).json()
+        socket.send_json({"type": "run", "id": "one", "block_id": "abc123", **document})
+        receive_until(socket, "running")
+        output = ""
+        while "Ready? " not in output:
+            output += socket.receive_json().get("data", "")
+        document = client.get("/api/document", params={"path": "guide.md"}).json()
+        response = client.put(
+            "/api/document",
+            json={
+                **document,
+                "content": document["content"].replace("Original paragraph.", "Edited paragraph."),
+            },
+        )
+        assert response.status_code == 200
+        socket.send_json({"type": "input", "data": "yes\n"})
+        receive_until(socket, "done")
+        receive_until(socket, "document")
+        assert "Edited paragraph." in file.read_text()
+        assert "Ready? yes\nyes\n" in file.read_text()
+
+
+def test_output_is_saved_after_the_browser_disconnects(tmp_path):
+    source = "```py\nimport time\nprint('started', flush=True)\ntime.sleep(0.15)\nprint('finished without browser')\n```\n<!-- abc123 -->\n```txt\n```\n"
+    file = tmp_path / "guide.md"
+    file.write_text(source)
+    with TestClient(create_app(tmp_path), base_url="http://127.0.0.1") as client:
+        with client.websocket_connect(
+            "ws://127.0.0.1/api/session?path=guide.md", headers={"origin": "http://127.0.0.1"}
+        ) as socket:
+            socket.receive_json()
+            document = client.get("/api/document", params={"path": "guide.md"}).json()
+            socket.send_json({"type": "run", "id": "one", "block_id": "abc123", **document})
+            output = ""
+            while "started" not in output:
+                output += socket.receive_json().get("data", "")
+        deadline = time.monotonic() + 5
+        while "```txt\nstarted\nfinished without browser\n```" not in file.read_text():
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+
+
+def test_changed_code_keeps_the_result_available_without_overwriting_the_file(tmp_path):
+    source = "```py\nanswer = input('Ready? ')\nprint(answer)\n```\n<!-- abc123 -->\n```txt\n```\n"
+    file = tmp_path / "guide.md"
+    file.write_text(source)
+    with (
+        TestClient(create_app(tmp_path), base_url="http://127.0.0.1") as client,
+        client.websocket_connect(
+            "ws://127.0.0.1/api/session?path=guide.md", headers={"origin": "http://127.0.0.1"}
+        ) as socket,
+    ):
+        socket.receive_json()
+        document = client.get("/api/document", params={"path": "guide.md"}).json()
+        socket.send_json({"type": "run", "id": "one", "block_id": "abc123", **document})
+        output = ""
+        while "Ready? " not in output:
+            output += socket.receive_json().get("data", "")
+        changed = source.replace("print(answer)", "print('changed code')")
+        file.write_text(changed)
+        socket.send_json({"type": "input", "data": "y\n"})
+        receive_until(socket, "done")
+        error = receive_until(socket, "save_error")[-1]
+        assert "code changed" in error["message"]
+        assert "Ready? y" in error["text"]
+        assert file.read_text() == changed
