@@ -1,21 +1,22 @@
-"""Start the local IMD service."""
+"""Start or restart the local IMD service."""
 
 import argparse
-from pathlib import Path
 
-import uvicorn
-
-from imd.server import create_app
+from imd.service import restart_service
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Open Markdown files with persistent xonsh sessions."
+        description="Start or restart the local Markdown editor in the background."
     )
-    parser.add_argument("--root", type=Path, default=Path.cwd(), help="Workspace directory")
-    parser.add_argument("--port", type=int, default=8000, help="Local service port")
-    args = parser.parse_args()
-    uvicorn.run(create_app(args.root), host="127.0.0.1", port=args.port)
+    parser.parse_args()
+    try:
+        restart_service()
+        print("IMD service ready at http://localhost:8000.")
+    except KeyboardInterrupt:
+        pass
+    except (OSError, RuntimeError) as error:
+        parser.exit(1, f"{error}\n")
 
 
 if __name__ == "__main__":

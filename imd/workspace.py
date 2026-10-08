@@ -41,6 +41,15 @@ class Workspace:
                     documents.append(relative)
         return sorted(documents)
 
+    def open_default(self) -> dict:
+        path = self.path("imd.md")
+        try:
+            with path.open("x", encoding="utf-8"):
+                pass
+        except FileExistsError:
+            pass
+        return self.read("imd.md")
+
     def read(self, name: str) -> dict:
         content = self.path(name).read_text(encoding="utf-8")
         return {"path": name, "content": content, "revision": self._revision(content)}

@@ -219,3 +219,66 @@ def test_changed_code_keeps_the_result_available_without_overwriting_the_file(tm
         assert "code changed" in error["message"]
         assert "Ready? y" in error["text"]
         assert file.read_text() == changed
+
+
+def test_directory_url_creates_and_preserves_the_default_document(tmp_path):
+    from urllib.parse import quote
+
+    directory = tmp_path / "notes with 空格"
+    directory.mkdir()
+    url = quote(str(directory))
+    with TestClient(create_app(tmp_path), base_url="http://localhost:8000") as client:
+        response = client.get(url)
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        document = directory / "imd.md"
+        assert document.read_text() == ""
+        document.write_text("# Existing notes\n")
+        assert client.get(url + "/").status_code == 200
+        assert document.read_text() == "# Existing notes\n"
+        assert client.get("/api/documents", params={"workspace": str(directory)}).json() == {
+            "documents": ["imd.md"]
+        }
+        opened = client.get(
+            "/api/document", params={"workspace": str(directory), "path": "imd.md"}
+        ).json()
+        assert opened["content"] == "# Existing notes\n"
+        saved = client.put(
+            "/api/document", params={"workspace": str(directory)},
+            json={**opened, "content": "# Saved notes\n"},
+        )
+        assert saved.status_code == 200
+        assert document.read_text() == "# Saved notes\n"
+
+
+def test_directory_url_rejects_missing_directories_and_outside_default_document(tmp_path):
+    (tmp_path / "outside.md").write_text("Keep me")
+    directory = tmp_path / "notes"
+    directory.mkdir()
+    (directory / "imd.md").symlink_to(tmp_path / "outside.md")
+    with TestClient(create_app(tmp_path), base_url="http://localhost:8000") as client:
+        assert client.get(str(tmp_path / "missing")).status_code == 404
+        assert not (tmp_path / "missing").exists()
+        assert client.get(str(directory)).status_code == 400
+        assert (tmp_path / "outside.md").read_text() == "Keep me"
+
+
+def test_directory_sessions_are_separate(tmp_path):
+    for name in ["first", "second"]:
+        directory = tmp_path / name
+        directory.mkdir()
+        (directory / "imd.md").write_text("")
+    with TestClient(create_app(tmp_path), base_url="http://localhost:8000") as client:
+        from urllib.parse import urlencode
+
+        for name in ["first", "second"]:
+            query = urlencode({"workspace": str(tmp_path / name), "path": "imd.md"})
+            with client.websocket_connect(
+                f"ws://localhost:8000/api/session?{query}", headers={"origin": "http://localhost:8000"}
+            ) as socket:
+                socket.receive_json()
+                code = "value = 42" if name == "first" else "print('isolated=' + str('value' not in globals()))"
+                socket.send_json({"type": "run", "id": name, "code": code})
+                messages = receive_until(socket, "done")
+                if name == "second":
+                    assert "isolated=True" in "".join(m.get("data", "") for m in messages)

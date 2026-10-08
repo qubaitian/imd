@@ -32,6 +32,12 @@ pwd
 print($IMD_GREETING + ', ' + name + '.')
 ```
 
+<!-- b9f3a42efac6 -->
+```txt
+/Users/qubaitian/refac/imd/examples
+Your session is alive, Markdown.
+```
+
 ## Change the directory
 
 The next block will see the directory you choose here.
@@ -41,10 +47,22 @@ cd ..
 pwd
 ```
 
+<!-- b231edf23d9e -->
+```txt
+/Users/qubaitian/refac/imd
+```
+
 ```py
 print('Current directory:', $PWD)
 print('Still here:', name)
 print('Environment:', $IMD_GREETING)
+```
+
+<!-- b2b3f1e59d59 -->
+```txt
+Current directory: /Users/qubaitian/refac/imd
+Still here: Markdown
+Environment: Your session is alive
 ```
 
 ## Ask a question
@@ -54,6 +72,12 @@ Click Run, then type your answer in the output block.
 ```shell
 answer = input('What would you like to build? ')
 print('Next up:', answer)
+```
+
+<!-- e8d35e17a22c -->
+```txt
+What would you like to build? eeee
+Next up: eeee
 ```
 
 > Each document starts in its own directory.

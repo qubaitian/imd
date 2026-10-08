@@ -1,4 +1,5 @@
 <script>
+  import { workspaceUrl } from './api.js';
   import { onMount } from 'svelte';
   import MarkdownView from './MarkdownView.svelte';
   import { DocumentSession } from './session.svelte.js';
@@ -25,7 +26,7 @@
   let filtered = $derived(documents.filter((path) => path.toLowerCase().includes(query.toLowerCase())));
 
   async function request(url, options) {
-    const response = await fetch(url, options);
+    const response = await fetch(workspaceUrl(url), options);
     const body = await response.json();
     if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'The request failed.');
     return body;
@@ -45,7 +46,6 @@
         const draft = active;
         sessions.set(path, new DocumentSession(path, (remote) => applyDocument(draft, remote), (message) => error = message));
       }
-      localStorage.setItem('imd-document', path);
     } catch (failure) {
       if (requestId === openRequest) error = failure.message;
     }
@@ -164,9 +164,7 @@
   onMount(() => {
     (async () => {
       await refresh();
-      const previous = localStorage.getItem('imd-document');
-      const first = documents.includes(previous) ? previous : documents[0];
-      if (first) await open(first);
+      if (documents.includes('imd.md')) await open('imd.md');
       loading = false;
     })();
     return () => {
@@ -180,7 +178,7 @@
 
 <div class="app-shell">
   <aside class="sidebar">
-    <a class="brand" href="/" aria-label="IMD home"><span class="brand-mark">i<span>m</span>d<span class="brand-dot">.</span></span><span class="brand-caption">INTERACTIVE MARKDOWN</span></a>
+    <a class="brand" href={location.pathname} aria-label="IMD home"><span class="brand-mark">i<span>m</span>d<span class="brand-dot">.</span></span><span class="brand-caption">INTERACTIVE MARKDOWN</span></a>
     <div class="workspace-label"><Icon name="folder" size={15} /><span>Local workspace</span><span class="local-badge">LOCAL</span></div>
     <div class="document-heading"><span>DOCUMENTS</span><button class="icon-button" onclick={refresh} title="Refresh file list"><Icon name="reset" size={14} /></button></div>
     <input class="file-search" type="search" bind:value={query} placeholder="Find a document…" aria-label="Find a document" />

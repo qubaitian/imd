@@ -1,3 +1,5 @@
+import { workspaceUrl } from './api.js';
+
 export class DocumentSession {
   connected = $state(false);
   state = $state('connecting');
@@ -14,7 +16,7 @@ export class DocumentSession {
   connect() {
     if (this.disposed) return;
     this.state = 'connecting';
-    this.socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/session?path=${encodeURIComponent(this.path)}`);
+    this.socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${workspaceUrl(`/api/session?path=${encodeURIComponent(this.path)}`)}`);
     this.socket.onmessage = ({ data }) => {
       if (this.disposed) return;
       const event = JSON.parse(data);
@@ -79,7 +81,7 @@ export class DocumentSession {
   }
 
   async reset() {
-    const response = await fetch(`/api/session/reset?path=${encodeURIComponent(this.path)}`, { method: 'POST' });
+    const response = await fetch(workspaceUrl(`/api/session/reset?path=${encodeURIComponent(this.path)}`), { method: 'POST' });
     if (!response.ok) this.onError((await response.json()).detail);
     else this.runs = {};
   }

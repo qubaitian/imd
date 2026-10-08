@@ -5,10 +5,10 @@ import ipaddress
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
@@ -43,8 +43,8 @@ def local_host(host: str) -> bool:
         return False
 
 
-def create_app(root: Path) -> FastAPI:
-    workspace = Workspace(root)
+def create_app(root: Path | None = None) -> FastAPI:
+    default_root = (root or Path.cwd()).resolve()
     sessions = Sessions()
     runs: set[asyncio.Task] = set()
 
@@ -71,7 +71,23 @@ def create_app(root: Path) -> FastAPI:
         response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
         return response
 
-    def document_path(name):
+    def open_workspace(directory: str | None = None):
+        try:
+            root = Path(directory) if directory is not None else default_root
+            if not root.is_absolute():
+                raise ValueError("Use an absolute workspace directory.")
+            workspace = Workspace(root)
+            if not workspace.root.is_dir():
+                raise FileNotFoundError(root)
+            return workspace
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
+        except FileNotFoundError as error:
+            raise HTTPException(404, "Workspace directory not found.") from error
+        except OSError as error:
+            raise HTTPException(400, "Cannot open this workspace.") from error
+
+    def document_path(name, workspace):
         try:
             path = workspace.path(name)
             if not path.is_file():
@@ -83,23 +99,25 @@ def create_app(root: Path) -> FastAPI:
             raise HTTPException(404, "Document not found.") from error
 
     @app.get("/api/documents")
-    async def list_documents():
-        return {"documents": workspace.list()}
+    async def list_documents(workspace: str | None = None):
+        return {"documents": open_workspace(workspace).list()}
 
     @app.get("/api/document")
-    async def read_document(path: str):
-        document_path(path)
+    async def read_document(path: str, workspace: str | None = None):
+        workspace = open_workspace(workspace)
+        document_path(path, workspace)
         try:
             return workspace.read(path)
         except (OSError, UnicodeError) as error:
             raise HTTPException(400, "Cannot read this document as UTF-8.") from error
 
     @app.put("/api/document")
-    async def save_document(document: SaveDocument):
-        document_path(document.path)
+    async def save_document(document: SaveDocument, workspace: str | None = None):
+        workspace = open_workspace(workspace)
+        document_path(document.path, workspace)
         try:
             saved = workspace.save(document.path, document.content, document.revision)
-            session = await sessions.get(document_path(document.path))
+            session = await sessions.get(document_path(document.path, workspace))
             session.publish({"type": "document", "document": saved})
             return saved
         except Conflict as error:
@@ -108,19 +126,21 @@ def create_app(root: Path) -> FastAPI:
             raise HTTPException(400, "Cannot save this document.") from error
 
     @app.post("/api/session/reset")
-    async def reset_session(path: str):
-        session = await sessions.reset(document_path(path))
+    async def reset_session(path: str, workspace: str | None = None):
+        workspace = open_workspace(workspace)
+        session = await sessions.reset(document_path(path, workspace))
         return session.snapshot()
 
     @app.websocket("/api/session")
-    async def console(socket: WebSocket, path: str):
+    async def console(socket: WebSocket, path: str, workspace: str | None = None):
         host = socket.headers.get("host", "")
         scheme = "https" if socket.url.scheme == "wss" else "http"
         if not local_host(host) or socket.headers.get("origin") != f"{scheme}://{host}":
             await socket.close(code=1008)
             return
         try:
-            document = document_path(path)
+            workspace = open_workspace(workspace)
+            document = document_path(path, workspace)
         except HTTPException:
             await socket.close(code=1008)
             return
@@ -213,15 +233,30 @@ def create_app(root: Path) -> FastAPI:
             sender.cancel()
             await asyncio.gather(sender, return_exceptions=True)
 
-    dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-    if dist.is_dir():
-        app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
-    else:
+    package = Path(__file__).resolve().parent
+    dist = package / "static"
+    if not (dist / "index.html").is_file():
+        dist = package.parent / "frontend" / "dist"
+    if (dist / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
 
-        @app.get("/")
-        async def build_required():
-            return JSONResponse(
-                {"detail": "Build the frontend with npm run build in frontend/."}, status_code=503
-            )
+    @app.get("/")
+    async def home():
+        return RedirectResponse(quote(str(default_root)))
+
+    @app.get("/{directory:path}")
+    async def open_directory(directory: str):
+        workspace = open_workspace("/" + directory)
+        try:
+            workspace.open_default()
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
+        except (OSError, UnicodeError) as error:
+            raise HTTPException(400, "Cannot open imd.md in this workspace.") from error
+        if (dist / "index.html").is_file():
+            return FileResponse(dist / "index.html")
+        return JSONResponse(
+            {"detail": "Build the frontend with npm run build in frontend/."}, status_code=503
+        )
 
     return app

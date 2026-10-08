@@ -4,8 +4,14 @@ IMD is a local Markdown editor with code execution in the browser.
 
 ## TERM
 
-**Workspace**: The local directory containing the documents available to IMD.  
+**IMD service**: The local Python process available at `http://localhost:8000`.  
+**Frontend**: The HTML, JavaScript, and CSS files for the browser editor.  
+**Service control**: A private local socket for stopping the IMD service.  
+**Restart process**: An independent Python process for the next IMD service.  
+**Service log**: A local file containing the IMD service startup and runtime messages.  
+**Workspace**: An existing local directory identified by the absolute path in an IMD service URL.  
 **Document**: A Markdown file inside the workspace.  
+**Default document**: The document named `imd.md` at the workspace root.  
 **Code block**: A fenced section of a document with a language label.  
 **Executable block**: A code block with the label `xonsh`, `shell`, `sh`, `py`, or `python`.  
 **Session**: A persistent xonsh process for one document, with its own working directory, environment, and Python variables.  
@@ -18,7 +24,18 @@ IMD is a local Markdown editor with code execution in the browser.
 
 ## DESIGN
 
-The browser connects to a local Python service.  
+The browser connects to the IMD service.  
+`imd` starts the IMD service on port 8000 when it is stopped.  
+`imd` restarts the IMD service when it is running.  
+The restart process starts outside the document session before stopping the old service.  
+The IMD service runs in the background after the command ends.  
+Existing browser pages reconnect automatically after a restart.  
+The command does not open a new browser tab.  
+Restarting the service ends all sessions and clears their state.  
+A directory URL opens the default document and creates an empty file if it is missing.  
+An existing default document keeps its content.  
+Different directory URLs select different workspaces in the same service.  
+A missing directory returns an error.  
 Each document has one session shared by all browser tabs that open that document.  
 Different documents have separate sessions.  
 All executable blocks use xonsh syntax, regardless of their language label.  
@@ -42,6 +59,46 @@ Output updates preserve other changes already saved in the document.
 Conflicting edits remain in the editor with a visible error.  
 
 ## ADR
+
+### Directory URL and default document
+
+Use `imd` instead of startup parameters for a fixed workspace.  
+Use an absolute directory path in the URL instead of `--root` so one service can open several workspaces.  
+Open `imd.md` instead of a previously selected document because the directory URL has one predictable document.  
+Create the file only if it is missing so opening a URL preserves existing notes.  
+Pass the workspace with each API request and session connection so browser tabs use their own directories.  
+Keep document access inside its workspace and keep browser connections on the same local origin.  
+
+### Frontend in the installation package
+
+Include the built frontend in the Python wheel under `imd/static`.  
+Read the bundled files after installation instead of expecting a repository beside the installed Python package.  
+Keep the repository build directory as a fallback for development.  
+Use Hatchling force-include instead of a separate frontend installation so `uv tool install --reinstall .` installs the complete editor.  
+Build the frontend before building or installing the Python package.  
+
+### Service control
+
+Use a private Unix socket instead of finding and killing the process on port 8000.  
+Another program may own that port.  
+Use a file lock instead of a saved process identifier because an identifier may later belong to another process.  
+Ask Uvicorn to stop so its normal shutdown closes sessions and releases the service control.  
+Keep the service control in `$XDG_STATE_HOME/imd`, or `~/.local/state/imd` when that variable is absent.  
+
+### Restart from a document session
+
+Use one `imd` command instead of separate open and close commands.  
+Start an independent restart process before stopping the old IMD service.  
+A command inside a document session ends when that service stops.  
+Use Python subprocess creation with a new operating system session and separate input and output instead of shell background execution.  
+Shell background execution can keep the command inside the document session process group or attached to its terminal.  
+Keep the restart process as the new service instead of adding a permanent supervisor.  
+Use a file lock to serialize restarts so simultaneous commands cannot start competing services.  
+Use a pipe to report service readiness or startup failure to an external terminal.  
+A closed pipe from an ended document session does not stop the restart process.  
+Write detached service messages to the service log because the original console may disappear.  
+Keep the existing browser reconnect logic instead of opening a new tab or refreshing the page.  
+An automatic refresh can lose unsaved edits.  
 
 ### Svelte and xterm
 
@@ -108,18 +165,106 @@ npm run build
 cd ..
 ```
 
-Start the service with the example workspace.  
+<!-- 4c4b9dad36a8 -->
+```txt
+Resolved 37 packages in 4ms
+Checked 36 packages in 5ms
 
-```sh
-uv run imd --root examples
+added 75 packages, and audited 76 packages in 8s
+
+14 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+npm warn allow-scripts 2 packages have install scripts not yet covered by allowS
+cripts:
+npm warn allow-scripts   esbuild@0.28.2 (postinstall: node install.js)
+npm warn allow-scripts   fsevents@2.3.3 (install: (install scripts present))
+npm warn allow-scripts
+npm warn allow-scripts Run `npm approve-scripts --allow-scripts-pending` to revi
+ew, or `npm approve-scripts <pkg>` to allow.
+
+> imd-frontend@0.1.0 build
+> vite build
+
+vite v7.3.7 building client environment for production...
+✓ 197 modules transformed.
+dist/index.html                     0.62 kB │ gzip:  0.34 kB
+dist/assets/index-D8L1581v.css     15.02 kB │ gzip:  4.06 kB
+dist/assets/index-Bp7Shjd6.js      62.56 kB │ gzip: 24.41 kB
+dist/assets/markdown-Btou6k2a.js  134.21 kB │ gzip: 57.39 kB
+dist/assets/terminal-DP_gxef0.js  330.51 kB │ gzip: 83.39 kB
+✓ built in 737ms
 ```
 
-Open <http://127.0.0.1:8000> in the browser.  
-Open `welcome.md` and run its blocks in order.  
-Open `separate.md` to try an independent session.  
+Install the command from this repository after building the frontend.  
+The installation package includes the built frontend.  
 
-Use `uv run imd --root /path/to/notes` for your own workspace.  
-Use `--port 8080` to choose another port.  
+```sh
+uv tool install --reinstall .
+```
+
+<!-- 3d450f0088d1 -->
+```txt
+Resolved 26 packages in 639ms
+   Building imd @ file:///Users/qubaitian/refac/imd
+      Built imd @ file:///Users/qubaitian/refac/imd
+Prepared 26 packages in 440ms
+Uninstalled 26 packages in 91ms
+Installed 26 packages in 18ms
+ ~ annotated-doc==0.0.5
+ ~ annotated-types==0.8.0
+ ~ anyio==4.15.1
+ ~ click==8.5.0
+ ~ fastapi==0.142.4
+ ~ h11==0.16.0
+ ~ httptools==0.8.0
+ ~ idna==3.20
+ ~ imd==0.1.0 (from file:///Users/qubaitian/refac/imd)
+ ~ markdown-it-py==4.2.0
+ ~ mdurl==0.1.2
+ ~ opentelemetry-api==1.45.1
+ ~ pydantic==2.13.5
+ ~ pydantic-core==2.46.5
+ ~ pyte==0.8.2
+ ~ python-dotenv==1.2.4
+ ~ pyyaml==6.0.3
+ ~ starlette==1.7.0
+ ~ typing-extensions==4.16.0
+ ~ typing-inspection==0.4.4
+ ~ uvicorn==0.54.0
+ ~ uvloop==0.23.0
+ ~ watchfiles==1.3.0
+ ~ wcwidth==0.9.2
+ ~ websockets==17.2
+ ~ xonsh==0.24.2
+Installed 1 executable: imd
+```
+
+Start or restart the IMD service.  
+
+```sh
+imd
+```
+
+<!-- 6b096c485ef3 -->
+```txt
+```
+
+Open <http://localhost:8000/Users/qubaitian/refac/imd> in the browser.  
+IMD opens `/Users/qubaitian/refac/imd/imd.md` and creates an empty file if it is missing.  
+Use `http://localhost:8000/path/to/notes` for another existing workspace.  
+Encode spaces and special characters in the directory URL.  
+Open <http://localhost:8000> to use the service's starting directory.  
+Run `imd` from a terminal or an executable block to restart the service.  
+The browser reconnects after a brief disconnection.  
+Restarting ends active runs and clears session variables and environment changes.  
+Saved documents remain on disk.  
+The command returns after the service is ready when run from an external terminal.  
+The service remains running after that terminal closes.  
+Read the service log at `$XDG_STATE_HOME/imd/service.log`, or `~/.local/state/imd/service.log` when that variable is absent.  
+The previous `open`, `close`, `--root`, and `--port` arguments are removed.  
+
 Open files from the sidebar.  
 Use Edit or Split to change a document.  
 Changes save automatically after a short pause.  
@@ -144,7 +289,8 @@ cd frontend
 npm run dev
 ```
 
-Use the URL printed by Vite.  
+Add the absolute workspace directory to the URL printed by Vite.  
+Open that directory URL through the IMD service once to create `imd.md` if it is missing.  
 Vite forwards the API and session connection to the Python service on port 8000.  
 
 Run the checks from the repository directory.  
