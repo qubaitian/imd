@@ -239,7 +239,7 @@
       </div>
       <div class="session-footer"><span class:online={session?.connected} class="state-dot"></span><span>{session?.state || 'connecting'}</span><span class="session-directory">{session?.cwd || ''}</span><span class="reference-status" role="status" title={referenceStatus}>{referenceStatus || 'Changes and output save automatically'}</span></div>
     {:else}
-      <div class="empty-state"><span class="empty-mark">imd.</span><h1>{loading ? 'Opening your workspace…' : 'Start with a Markdown file.'}</h1><p>Open a document from the sidebar.</p><p>Use a fenced code block marked <code>xonsh</code>, <code>shell</code>, <code>sh</code>, <code>py</code>, or <code>python</code> to run code.</p><p>Use an <code>agent</code> block to submit a prompt after configuring agent commands.</p></div>
+      <div class="empty-state"><span class="empty-mark">imd.</span><h1>{loading ? 'Opening your workspace…' : 'Start with a Markdown file.'}</h1><p>Open a document from the sidebar.</p><p>Use any fenced code block to run xonsh code, with or without a language label.</p><p>Use an <code>agent</code> block to submit a prompt after configuring agent commands.</p></div>
     {/if}
   </main>
 </div>

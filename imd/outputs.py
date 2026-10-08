@@ -4,7 +4,6 @@ import re
 
 from markdown_it import MarkdownIt
 
-LANGUAGES = {"xonsh", "shell", "sh", "py", "python", "agent"}
 MARKER = re.compile(r"<!--\s*([a-f0-9]{6,32})\s*-->")
 
 
@@ -22,17 +21,29 @@ def output_block(content: str, marker: str) -> dict:
     index = matches[0]
     if index < 1 or index + 1 >= len(tokens):
         raise ValueError("The output marker must be between code and output.")
+    outputs = set()
+    for position in range(1, index):
+        token = tokens[position]
+        if (
+            token.type == "html_block"
+            and MARKER.fullmatch(token.content.strip())
+            and tokens[position - 1].type == "fence"
+            and position - 1 not in outputs
+            and tokens[position + 1].type == "fence"
+            and tokens[position + 1].info.strip() == "txt"
+        ):
+            outputs.add(position + 1)
     code, output = tokens[index - 1], tokens[index + 1]
     if (
         code.type != "fence"
-        or (code.info.strip().split() or [""])[0].lower() not in LANGUAGES
+        or index - 1 in outputs
         or output.type != "fence"
         or output.info.strip() != "txt"
     ):
         raise ValueError("The output marker must follow executable code and precede a txt fence.")
     return {
         "id": marker, "code": code.content,
-        "language": code.info.strip().split()[0].lower(),
+        "language": (code.info.strip().split() or ["xonsh"])[0].lower(),
         "output": output.content, "map": output.map,
     }
 

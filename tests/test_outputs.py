@@ -64,3 +64,18 @@ def test_terminal_capture_ignores_private_sgr_sequences_from_vim():
     capture = TerminalCapture(80, 24)
     capture.write("before\r\n\x1b[?0m\x1b[?4;2mafter\r\n")
     assert capture.text() == "before\nafter\n"
+
+
+@pytest.mark.parametrize("label", ["", "js extra", "txt", "custom"])
+def test_any_code_fence_can_have_saved_output(label):
+    source = SOURCE.replace("```xonsh", "```" + label)
+    updated = replace_output(source, "3f9a1c", "reply\n")
+    block = output_block(updated, "3f9a1c")
+    assert block["language"] == (label.split() or ["xonsh"])[0]
+    assert block["output"] == "reply\n"
+
+
+def test_saved_output_cannot_be_the_code_for_another_run():
+    source = SOURCE + "<!-- abc123 -->\n```txt\nsecond output\n```\n"
+    with pytest.raises(ValueError, match="executable code"):
+        output_block(source, "abc123")

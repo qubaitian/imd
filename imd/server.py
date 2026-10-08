@@ -27,7 +27,7 @@ class ConsoleMessage(BaseModel):
     type: str
     id: str = Field(default="", max_length=100)
     code: str = Field(default="", max_length=256_000)
-    language: str = Field(default="xonsh", pattern=r"^(xonsh|shell|sh|py|python|agent)$")
+    language: str = "xonsh"
     data: str = Field(default="", max_length=8192)
     columns: int = Field(default=80, ge=2, le=500)
     rows: int = Field(default=24, ge=2, le=200)

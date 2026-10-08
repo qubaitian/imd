@@ -9,18 +9,18 @@ describe('executable blocks', () => {
   });
 
   it('accepts every agreed label and preserves the exact code', () => {
-    for (const language of ['xonsh', 'shell', 'sh', 'py', 'python', 'agent']) {
+    for (const language of ['xonsh', 'shell', 'sh', 'py', 'python', 'agent', 'js', 'txt', 'custom', '']) {
       const { html, blocks } = renderMarkdown(`\`\`\`${language}\ncd child\n$VALUE = 'kept'\n\`\`\``);
-      expect(blocks.map(({ language, code }) => ({ language, code }))).toEqual([{ language, code: "cd child\n$VALUE = 'kept'\n" }]);
+      expect(blocks.map(({ language, code }) => ({ language, code }))).toEqual([{ language: language || 'xonsh', code: "cd child\n$VALUE = 'kept'\n" }]);
       expect(html).toContain('data-block="0"');
       expect(html).toContain('Run');
     }
   });
 
-  it('keeps other blocks as examples and handles nested fences', () => {
+  it('offers Run for arbitrary labels and nested fences', () => {
     const { html, blocks } = renderMarkdown('```js\nalert(1)\n```\n\n> ```py\n> print(42)\n> ```');
-    expect(blocks.map(({ language, code }) => ({ language, code }))).toEqual([{ language: 'py', code: 'print(42)\n' }]);
-    expect(html.match(/data-block=/g)).toHaveLength(1);
+    expect(blocks.map(({ language, code }) => ({ language, code }))).toEqual([{ language: 'js', code: 'alert(1)\n' }, { language: 'py', code: 'print(42)\n' }]);
+    expect(html.match(/data-block=/g)).toHaveLength(2);
   });
 
   it('escapes document HTML and code without changing executable content', () => {

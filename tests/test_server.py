@@ -1,8 +1,9 @@
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 
-from imd.server import create_app
+from imd.server import ConsoleMessage, create_app
 
 
 def test_document_api_and_origin_checks(tmp_path):
@@ -138,8 +139,9 @@ def test_two_browser_tabs_share_a_document_session(tmp_path):
             assert "shared=42" in "".join(m.get("data", "") for m in messages)
 
 
-def test_marked_run_saves_plain_output_and_replaces_it_on_the_next_run(tmp_path):
-    source = "```py\nprint('saved output')\n```\n\n<!-- abc123 -->\n```txt\nold output\n```\n"
+@pytest.mark.parametrize("label", ["py", "", "js", "txt", "custom"])
+def test_marked_run_saves_plain_output_and_replaces_it_on_the_next_run(tmp_path, label):
+    source = f"```{label}\nprint('saved output')\n```\n\n<!-- abc123 -->\n```txt\nold output\n```\n"
     file = tmp_path / "guide.md"
     file.write_text(source)
     with (
@@ -337,3 +339,9 @@ def test_directory_sessions_are_separate(tmp_path):
                 messages = receive_until(socket, "done")
                 if name == "second":
                     assert "isolated=True" in "".join(m.get("data", "") for m in messages)
+
+
+@pytest.mark.parametrize("label", ["", "js", "txt", "custom"])
+def test_console_accepts_any_code_label(label):
+    message = ConsoleMessage.model_validate({"type": "run", "language": label})
+    assert message.language == label

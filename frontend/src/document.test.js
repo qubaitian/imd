@@ -16,6 +16,17 @@ describe('Markdown output blocks', () => {
     expect(renderMarkdown(saved).outputs).toEqual([{ id: 'abc123', text: 'Agent reply\n' }]);
   });
 
+  it.each(['', 'js extra', 'txt', 'custom'])('links output for any code fence: %s', (label) => {
+    const content = `\`\`\`${label}\nthis may fail\n\`\`\`\n`;
+    const saved = replaceOutput(prepareOutput(content, 0, 'abc123').content, 'abc123', 'result\n');
+    const rendered = renderMarkdown(saved);
+    expect(rendered.blocks).toHaveLength(1);
+    expect(rendered.blocks[0]).toMatchObject({ language: label.split(' ')[0] || 'xonsh', output: 'result\n' });
+    expect(rendered.html.match(/data-block=/g)).toHaveLength(1);
+    expect(rendered.html).not.toContain('Example');
+    expect(saved).toContain(content.trimEnd());
+  });
+
   it('adds a marker and txt fence directly after the selected block', () => {
     const prepared = prepareOutput(source, 0, 'abc123');
     expect(prepared.id).toBe('abc123');

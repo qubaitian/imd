@@ -1,6 +1,5 @@
 import MarkdownIt from 'markdown-it';
 
-export const languages = new Set(['xonsh', 'shell', 'sh', 'py', 'python', 'agent']);
 const markerPattern = /^<!--\s*([a-f0-9]{6,32})\s*-->$/;
 
 export function analyzeDocument(content) {
@@ -11,8 +10,8 @@ export function analyzeDocument(content) {
   const outputs = new Map();
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index];
-    const language = token.info.trim().split(/\s+/)[0].toLowerCase();
-    if (token.type !== 'fence' || !languages.has(language)) continue;
+    if (token.type !== 'fence' || outputs.has(token)) continue;
+    const language = token.info.trim().split(/\s+/)[0].toLowerCase() || 'xonsh';
     const marker = tokens[index + 1];
     const output = tokens[index + 2];
     const match = marker?.type === 'html_block' && marker.content.trim().match(markerPattern);

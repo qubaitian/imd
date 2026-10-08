@@ -7,7 +7,7 @@ export function renderMarkdown(content, statuses = {}, connected = true) {
   markdown.renderer.rules.fence = (tokens, index) => {
     const token = tokens[index];
     const language = token.info.trim().split(/\s+/)[0].toLowerCase();
-    let button = '<span class="example-label">Example</span>';
+    let button = '';
     let editable = true;
     if (outputs.has(token)) {
       const output = outputs.get(token);
@@ -23,7 +23,7 @@ export function renderMarkdown(content, statuses = {}, connected = true) {
     }
     const slot = editableBlocks.length;
     editableBlocks.push({ code: token.content, info: token.info, map: token.map, editable });
-    return `<section class="code-block"><div class="code-header"><span class="code-language">${escape(language || 'text')}</span>${button}</div><div data-code-slot="${slot}"><pre><code>${escape(token.content)}</code></pre></div></section>\n`;
+    return `<section class="code-block"><div class="code-header"><span class="code-language">${escape(language || 'xonsh')}</span>${button}</div><div data-code-slot="${slot}"><pre><code>${escape(token.content)}</code></pre></div></section>\n`;
   };
   markdown.renderer.rules.html_block = (tokens, index) => markers.has(tokens[index]) ? '' : escape(tokens[index].content);
   markdown.renderer.rules.html_inline = (tokens, index) => escape(tokens[index].content);

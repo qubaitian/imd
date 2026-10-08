@@ -10,10 +10,10 @@ describe('code block editing', () => {
     expect(renderMarkdown(source).editableBlocks).toHaveLength(1);
   });
 
-  it('includes examples but not output blocks and disables active runs', () => {
+  it('includes arbitrary labels and disables editing during active runs', () => {
     const source = '```js\nexample\n```\n```py\nrun\n```';
     const rendered = renderMarkdown(source, { 0: { status: 'running' } });
-    expect(rendered.editableBlocks.map(({ editable }) => editable)).toEqual([true, false]);
+    expect(rendered.editableBlocks.map(({ editable }) => editable)).toEqual([false, true]);
     expect(rendered.html).toContain('data-code-slot="0"');
     expect(rendered.html).toContain('data-code-slot="1"');
   });

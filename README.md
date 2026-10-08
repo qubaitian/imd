@@ -18,10 +18,12 @@ IMD is a local Markdown editor with code execution in the browser.
 **Split view**: A document view containing the editor beside rendered Markdown.  
 **Selection**: A nonempty range of text in the editor.  
 **Document reference**: Plain text in the form `@/absolute/document/path.md:start-end` with inclusive source line numbers starting at 1.  
-**Code block**: A fenced section of a document with a language label.  
+**Code block**: A fenced section of a document with an optional language label.  
 **Code block editor**: A text area for the body of a code block in Preview or Split view.  
 **Agent block**: A code block with the label `agent`.  
-**Executable block**: A code block with the label `xonsh`, `shell`, `sh`, `py`, `python`, or `agent`.  
+**Output marker**: A unique hexadecimal identifier in a Markdown comment after a code block.  
+**Output block**: A `txt` code block linked by an output marker to the preceding code block, containing the latest run's plain terminal output.  
+**Executable block**: Any code block other than an output block.  
 **Session**: A persistent xonsh process for one document, with its own working directory, environment, and Python variables.  
 **Session connection**: A WebSocket connection between one browser page and a document session.  
 **Run**: One execution of an executable block inside its document's session.  
@@ -32,8 +34,6 @@ IMD is a local Markdown editor with code execution in the browser.
 **First command**: The agent command for prompts before the first success in a session.  
 **Continue command**: The agent command for later prompts in the same session.  
 **Prompt**: The complete text of an agent block submitted to an agent command after configuration.  
-**Output marker**: A unique hexadecimal identifier in a Markdown comment after an executable block.  
-**Output block**: A `txt` code block after an output marker containing the latest run's plain terminal output.  
 **Console**: The temporary xterm view inside an output block during a run.  
 **Terminal host**: The container without padding inside a console that defines the terminal screen's available space.  
 **IMD**: A browser editor for workspace documents with executable blocks and output blocks.  
@@ -57,7 +57,13 @@ Different directory URLs select different workspaces in the same service.
 A missing directory returns an error.  
 Each document has one session shared by all browser tabs that open that document.  
 Different documents have separate sessions.  
+Every code block except an output block has a Run button, with or without a language label.  
 Executable blocks use xonsh syntax unless the block is an agent block or agent configuration.  
+Language labels stay unchanged in the document.  
+A missing language label appears as `xonsh` in the preview.  
+IMD does not check whether code can run before showing Run.  
+The user decides whether to run each block.  
+A standalone `txt` block is executable.  
 Runs in one session execute in order.  
 A session starts in the document's directory.  
 The session remains available after a browser refresh.  
@@ -88,7 +94,7 @@ Agent stdout remains in the console and output block.
 Run failures remain visible in the console.  
 `imd set agent stderr` returns agent stderr to the console.  
 Changing the agent log keeps the current first or continue command choice.  
-Use `xonsh`, `shell`, `sh`, `py`, or `python` blocks for code after agent configuration.  
+Use any non-agent executable block for code after agent configuration.  
 Agent configuration is shared by browser tabs for the same document.  
 Resetting a session or restarting the service clears its agent configuration.  
 
@@ -115,6 +121,18 @@ Output updates preserve other changes already saved in the document.
 Conflicting edits remain in the editor with a visible error.  
 
 ## ADR
+
+### Run for every ordinary code block
+
+Offer Run for every code block except saved output instead of using a language whitelist.  
+The user decides whether the code is suitable for execution.  
+Keep xonsh as the shared interpreter instead of selecting interpreters from language labels.  
+All ordinary code blocks share the document session's state.  
+Keep language labels and source text unchanged.  
+Identify output blocks by their output markers instead of excluding all `txt` blocks.  
+A standalone `txt` block is ordinary code.  
+Keep saved output without Run because it is the result of another block.  
+Keep `agent` prompts and `sh` agent configuration under their existing rules.  
 
 ### Code block editing in the preview
 
@@ -225,7 +243,7 @@ Use uv to manage Python dependencies and commands.
 Use its dependency lock and startup command instead of separate pip and virtual environment steps.  
 Use one persistent xonsh process per document instead of starting an interpreter for each block.  
 A persistent process preserves directory changes, environment changes, and Python variables.  
-Run every supported language label through xonsh instead of separate shell and Python interpreters.  
+Run every non-agent executable block through xonsh instead of separate shell and Python interpreters.  
 Separate interpreters would split the document's state.  
 
 ### Local service and process boundary
