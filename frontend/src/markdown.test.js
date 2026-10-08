@@ -36,6 +36,9 @@ it('keeps add buttons available offline and during a run', () => {
   const source = '```xonsh\necho old\n```\n\n```js\nexample\n```';
   const html = renderMarkdown(source, { 0: { status: 'running' } }, false).html;
   const additions = [...html.matchAll(/<button class="add-button"[^>]*>/g)].map((match) => match[0]);
-  expect(additions).toHaveLength(3);
+  expect(additions).toHaveLength(6);
+  for (const block of [0, 1]) {
+    expect(additions.filter((button) => button.includes(`data-after="${block}"`))).toHaveLength(3);
+  }
   expect(additions.every((button) => !button.includes('disabled'))).toBe(true);
 });
