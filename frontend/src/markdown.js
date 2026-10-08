@@ -20,6 +20,9 @@ export function renderMarkdown(content, statuses = {}, connected = true) {
       const label = { queued: 'Queued', running: 'Running', ok: 'Run again', error: 'Retry', interrupted: 'Run again' }[status] ?? 'Run';
       const disabled = !connected || status === 'queued' || status === 'running';
       button = `<button class="run-button ${status}" data-block="${block}" ${disabled ? 'disabled' : ''} aria-label="${label} code block ${block + 1}"><span aria-hidden="true">${status === 'ok' ? '✓' : '▷'}</span> ${label}</button>`;
+      const additions = [['xonsh', 'X', 'xonsh code block'], ['markdown', 'M', 'Markdown content'], ['agent', 'A', 'agent block']]
+        .map(([kind, letter, name]) => `<button class="add-button" data-add="${kind}" data-after="${block}" title="Add ${name} below" aria-label="Add ${name} after code block ${block + 1}">+${letter}</button>`).join('');
+      button = `<div class="block-actions">${button}${additions}</div>`;
     }
     const slot = editableBlocks.length;
     editableBlocks.push({ code: token.content, info: token.info, map: token.map, editable });

@@ -19,7 +19,9 @@ IMD is a local Markdown editor with code execution in the browser.
 **Selection**: A nonempty range of text in the editor.  
 **Document reference**: Plain text in the form `@/absolute/document/path.md:start-end` with inclusive source line numbers starting at 1.  
 **Code block**: A fenced section of a document with an optional language label.  
+**Markdown content**: Document text outside code blocks, written with Markdown syntax.  
 **Code block editor**: A text area for the body of a code block in Preview or Split view.  
+**xonsh block**: A code block with the label `xonsh`.  
 **Agent block**: A code block with the label `agent`.  
 **Output marker**: A unique hexadecimal identifier in a Markdown comment after a code block.  
 **Output block**: A `txt` code block linked by an output marker to the preceding code block, containing the latest run's plain terminal output.  
@@ -100,6 +102,13 @@ Resetting a session or restarting the service clears its agent configuration.
 
 The editor opens and saves Markdown files in the workspace.  
 The preview has a Run button for each executable block.  
+Each Run button has `+X`, `+M`, and `+A` buttons beside it.  
+`+X` adds an empty xonsh block and opens its code block editor.  
+`+M` adds Markdown content and selects its placeholder in the editor in Split view.  
+`+A` adds an empty agent block and opens its code block editor.  
+New content follows the selected executable block and its output block, if present.  
+Adding content preserves the surrounding list or quote.  
+Adding content uses automatic save and remains available when the session is disconnected.  
 Each executable block has an output marker and an output block after its first run.  
 The output block contains a console while its run is active.  
 The console supports live output, keyboard input, resizing, interruption, and full-screen programs such as Vim.  
@@ -133,6 +142,18 @@ Identify output blocks by their output markers instead of excluding all `txt` bl
 A standalone `txt` block is ordinary code.  
 Keep saved output without Run because it is the result of another block.  
 Keep `agent` prompts and `sh` agent configuration under their existing rules.  
+
+### Adding content beside Run
+
+Use three buttons beside each Run button for adding xonsh blocks, Markdown content, and agent blocks.  
+Use tooltips and accessible names for the short `+X`, `+M`, and `+A` labels.  
+Place new content after the output block so saved output stays linked to its executable block.  
+Use ordinary Markdown content for `+M` because explanations between runs should render as document text.  
+Use the existing editor in Split view for new Markdown content because it supports headings, lists, and paragraphs.  
+Select the placeholder so typing replaces it immediately.  
+Use the existing code block editor for new executable blocks.  
+Use source line boundaries from markdown-it for insertion because blocks can be inside lists and quotes.  
+
 
 ### Code block editing in the preview
 

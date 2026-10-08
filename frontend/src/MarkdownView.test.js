@@ -93,3 +93,43 @@ describe('code block editor in the preview', () => {
     expect(onchange).toHaveBeenCalledWith(rendered.editableBlocks[0], 'new\n');
   });
 });
+
+
+describe('add buttons in the full app', () => {
+  it.each(['Preview', 'Split'].flatMap((view) => ['xonsh', 'markdown', 'agent'].map((kind) => [view, kind])))('adds and focuses %s %s content', async (view, kind) => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => ({
+      ok: true,
+      json: async () => url.startsWith('/api/documents')
+        ? { documents: ['imd.md'] }
+        : { path: 'imd.md', content: '```xonsh\necho old\n```\n\n```agent\nold prompt\n```', revision: '1' },
+    })));
+    flushSync(() => component = mount(App, { target: document.body }));
+    await vi.waitFor(() => expect(document.querySelector('.run-button')).not.toBeNull());
+    flushSync(() => [...document.querySelectorAll('button')].find((button) => button.textContent === view).click());
+    const button = document.querySelector(`[data-add="${kind}"]`);
+    expect(button).not.toBeNull();
+    flushSync(() => button.click());
+    await vi.waitFor(() => {
+      flushSync();
+      const editor = document.querySelector(kind === 'markdown' ? '[aria-label="Markdown editor"]' : '.code-block-editor');
+      expect(editor).not.toBeNull();
+      expect(document.activeElement).toBe(editor);
+      if (kind === 'markdown') {
+        expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe('Write Markdown here.');
+        expect(editor.value).not.toContain('```markdown');
+      } else expect(editor.value).toBe('');
+    });
+    const editor = document.activeElement;
+    flushSync(() => {
+      editor.value = kind === 'markdown' ? editor.value.replace('Write Markdown here.', '# New note') : 'new content\n';
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    flushSync(() => [...document.querySelectorAll('button')].find((button) => button.textContent === 'Split').click());
+    const source = document.querySelector('[aria-label="Markdown editor"]').value;
+    expect(source).toContain(kind === 'markdown' ? '# New note' : 'new content');
+    expect(source).toContain('old prompt');
+    expect(source).toContain('echo old');
+    expect(document.querySelector('.save-state').textContent).toBe('Unsaved');
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+  });
+});

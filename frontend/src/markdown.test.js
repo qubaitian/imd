@@ -30,3 +30,12 @@ describe('executable blocks', () => {
     expect(blocks[0].code).toContain('<img src=x onerror=alert(1)>');
   });
 });
+
+
+it('keeps add buttons available offline and during a run', () => {
+  const source = '```xonsh\necho old\n```\n\n```js\nexample\n```';
+  const html = renderMarkdown(source, { 0: { status: 'running' } }, false).html;
+  const additions = [...html.matchAll(/<button class="add-button"[^>]*>/g)].map((match) => match[0]);
+  expect(additions).toHaveLength(3);
+  expect(additions.every((button) => !button.includes('disabled'))).toBe(true);
+});

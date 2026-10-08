@@ -1,6 +1,6 @@
 <script>
   import { readResponse, workspaceDirectory, workspaceUrl } from './api.js';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import MarkdownView from './MarkdownView.svelte';
   import { DocumentSession } from './session.svelte.js';
   import { mergeDocument, prepareOutput } from './document.js';
@@ -8,6 +8,7 @@
   import { renderMarkdown } from './markdown.js';
   import { copyDocumentReference } from './reference.js';
   import { replaceCodeBlock } from './code-block.js';
+  import { insertBlock } from './insert-block.js';
 
   let documents = $state([]);
   let active = $state(null);
@@ -18,6 +19,8 @@
   let saving = $state(false);
   let referenceStatus = $state('');
   let openRequest = 0;
+  let sourceEditor = $state();
+  let focusBlock = $state(null);
   const drafts = new Map();
   const sessions = new Map();
   const timers = new Map();
@@ -43,6 +46,7 @@
       if (active) drafts.set(active.path, active);
       active = document.saved === undefined ? { ...document, saved: document.content } : document;
       referenceStatus = '';
+      focusBlock = null;
       drafts.set(path, active);
       if (!sessions.has(path)) {
         const draft = active;
@@ -129,6 +133,7 @@
   function editCodeBlock(block, code) {
     try {
       active.content = replaceCodeBlock(active.content, block, code);
+      focusBlock = null;
       referenceStatus = '';
       scheduleSave();
     } catch (failure) {
@@ -136,7 +141,31 @@
     }
   }
 
-  async function runBlock(event) {
+  async function handlePreviewAction(event) {
+    const addition = event.target.closest?.('button[data-add]');
+    if (addition) {
+      const document = active;
+      try {
+        const kind = addition.dataset.add;
+        const inserted = insertBlock(document.content, Number(addition.dataset.after), kind);
+        document.content = inserted.content;
+        referenceStatus = '';
+        scheduleSave(document);
+        if (kind === 'markdown') {
+          focusBlock = null;
+          view = 'split';
+          await tick();
+          if (active !== document) return;
+          sourceEditor.focus();
+          sourceEditor.setSelectionRange(inserted.start, inserted.end);
+        } else {
+          focusBlock = { line: inserted.line };
+        }
+      } catch (failure) {
+        error = failure.message;
+      }
+      return;
+    }
     const button = event.target.closest?.('button[data-block]');
     if (!button || button.disabled || !session?.connected) return;
     const index = Number(button.dataset.block);
@@ -228,11 +257,11 @@
       </div>
       <div class="document-body" class:split={view === 'split'}>
         {#if view !== 'preview'}
-          <div class="editor-pane"><div class="pane-label">MARKDOWN <span>{active.content.split('\n').length} lines</span></div><textarea bind:value={active.content} oninput={() => { referenceStatus = ''; scheduleSave(); }} onkeydown={copyReference} spellcheck="false" aria-label="Markdown editor" title="Select text and press Cmd+L to copy a document reference."></textarea></div>
+          <div class="editor-pane"><div class="pane-label">MARKDOWN <span>{active.content.split('\n').length} lines</span></div><textarea bind:this={sourceEditor} bind:value={active.content} oninput={() => { referenceStatus = ''; focusBlock = null; scheduleSave(); }} onkeydown={copyReference} spellcheck="false" aria-label="Markdown editor" title="Select text and press Cmd+L to copy a document reference."></textarea></div>
         {/if}
         {#if view !== 'edit'}
           <div class="preview-pane"><div class="preview-meta"><span class="eyebrow">DOCUMENT PREVIEW</span><span class="block-count">{rendered.blocks.length} executable {rendered.blocks.length === 1 ? 'block' : 'blocks'}</span></div>
-            {#key active.path}<MarkdownView {rendered} {session} onrun={runBlock} oncodechange={editCodeBlock} />{/key}
+            {#key active.path}<MarkdownView {rendered} {session} {focusBlock} onrun={handlePreviewAction} oncodechange={editCodeBlock} />{/key}
             <div class="preview-end"><span></span><Icon name="file" size={13} /><span></span></div>
           </div>
         {/if}

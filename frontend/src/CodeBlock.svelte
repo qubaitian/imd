@@ -1,7 +1,8 @@
 <script>
-  let { block, onchange } = $props();
-  let editing = $state(false);
-  let value = $state('');
+  import { untrack } from 'svelte';
+  let { block, onchange, focusRequest = null } = $props();
+  let editing = $state(untrack(() => !!focusRequest));
+  let value = $state(untrack(() => focusRequest ? block.code : ''));
   let textarea = $state();
 
   function edit() {
