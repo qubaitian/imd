@@ -145,7 +145,7 @@ class Session:
                 self.state = "ready"
                 if message["type"] == "ready":
                     self._ready.set_result(None)
-                elif future := self._pending.get(message["id"]):
+                elif future := self._pending.pop(message["id"], None):
                     message["block_id"] = self._current["block_id"]
                     message["text"] = self._capture.text()
                     self._current.update(message)
@@ -168,10 +168,13 @@ class Session:
     ):
         run_id = run_id or uuid.uuid4().hex
         self._emit({"type": "queued", "id": run_id, "block_id": block_id})
-        async with self._lock:
+        await self._lock.acquire()
+        future = self._loop.create_future()
+        # A canceled caller must not let the next run start before the worker finishes.
+        future.add_done_callback(self._finish_run)
+        try:
             if self._closed or self.state == "closed":
                 raise RuntimeError("The session is closed.")
-            future = self._loop.create_future()
             self._pending[run_id] = future
             self._capture = TerminalCapture(self._columns, self._rows)
             self._current = {"id": run_id, "block_id": block_id, "output": "", "status": "running"}
@@ -183,11 +186,19 @@ class Session:
             self._writer.write(
                 (json.dumps({"id": run_id, "code": code, "language": language}) + "\n").encode()
             )
-            try:
-                await self._writer.drain()
-                return await asyncio.shield(future)
-            finally:
-                self._pending.pop(run_id, None)
+            await self._writer.drain()
+        except asyncio.CancelledError:
+            raise
+        except BaseException:
+            self._pending.pop(run_id, None)
+            future.cancel()
+            raise
+        return await asyncio.shield(future)
+
+    def _finish_run(self, future):
+        if not future.cancelled():
+            future.exception()
+        self._lock.release()
 
     def write(self, data: str):
         if not self._closed and self.state == "running":
@@ -231,6 +242,9 @@ class Sessions:
     def __init__(self):
         self._sessions: dict[Path, Session] = {}
         self._lock = asyncio.Lock()
+
+    def find(self, document: Path) -> Session | None:
+        return self._sessions.get(document.resolve())
 
     async def get(self, document: Path) -> Session:
         document = document.resolve()

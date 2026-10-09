@@ -82,7 +82,9 @@ async def test_agent_blocks_require_configuration_instead_of_executing_code(tmp_
     try:
         result = await session.run("print('must not execute')", language="agent")
         assert result["status"] == "error"
-        assert "Configure both first and continue" in result["text"]
+        assert result["text"] == (
+            "Configure both first and continue agent commands before a prompt.\n"
+        )
         assert result["text"] != "must not execute\n"
     finally:
         await session.close()
@@ -168,6 +170,7 @@ async def test_invalid_configuration_is_atomic_and_does_not_become_a_prompt(
         await session.run("hello", language="agent")
         result = await session.run(config + invalid + "\n", language="sh")
         assert result["status"] == "error"
+        assert "Traceback" not in result["text"]
         assert len(calls()) == 1
         await session.run("still configured", language="agent")
         assert calls()[-1]["args"][0] == "continue"

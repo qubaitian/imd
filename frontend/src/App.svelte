@@ -25,8 +25,7 @@
   const timers = new Map();
   const pendingSaves = new Map();
   let session = $derived(active ? sessions.get(active.path) : null);
-  let statuses = $derived(Object.fromEntries(renderMarkdown(active?.content || '').blocks.map((block, index) => [index, session?.runs[block.id] || {}])));
-  let rendered = $derived(renderMarkdown(active?.content || '', statuses, session?.connected || false));
+  let rendered = $derived(renderMarkdown(active?.content || '', session?.runs, session?.connected || false));
   let dirty = $derived(active && (active.conflict || active.content !== active.saved));
   let filtered = $derived(documents.filter((path) => path.toLowerCase().includes(query.toLowerCase())));
 

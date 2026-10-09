@@ -129,8 +129,8 @@ def create_app(root: Path | None = None) -> FastAPI:
         document_path(document.path, workspace)
         try:
             saved = workspace.save(document.path, document.content, document.revision)
-            session = await sessions.get(document_path(document.path, workspace))
-            session.publish({"type": "document", "document": saved})
+            if session := sessions.find(document_path(document.path, workspace)):
+                session.publish({"type": "document", "document": saved})
             return saved
         except Conflict as error:
             raise HTTPException(409, str(error)) from error

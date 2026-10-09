@@ -95,6 +95,44 @@ async def test_console_accepts_input_and_interrupts_a_run(tmp_path):
         await session.close()
 
 
+async def test_interrupt_after_user_code_does_not_end_the_session(tmp_path):
+    session = await Session.open(tmp_path)
+    try:
+        code = (
+            "import os, signal, sys\n"
+            "class InterruptOnFlush:\n"
+            "    def __init__(self, stream):\n"
+            "        self.stream = stream\n"
+            "    def write(self, text):\n"
+            "        return self.stream.write(text)\n"
+            "    def flush(self):\n"
+            "        sys.stdout = self.stream\n"
+            "        os.kill(os.getpid(), signal.SIGINT)\n"
+            "        self.stream.flush()\n"
+            "sys.stdout = InterruptOnFlush(sys.stdout)\n"
+        )
+        assert (await session.run(code))["status"] == "ok"
+        assert (await session.run("print('still alive')"))["status"] == "ok"
+    finally:
+        await session.close()
+
+
+async def test_canceled_run_keeps_runs_serial(tmp_path):
+    session = await Session.open(tmp_path)
+    try:
+        slow = asyncio.create_task(
+            session.run("import time\nprint('slow', flush=True)\ntime.sleep(0.3)", "one", "abc123")
+        )
+        await output_contains(session, "slow")
+        slow.cancel()
+        result = await asyncio.wait_for(session.run("print('next')", "two", "def456"), 5)
+        assert result["text"] == "next\n"
+        runs = {run["block_id"]: run for run in session.snapshot()["runs"]}
+        assert runs["abc123"]["status"] == "ok"
+    finally:
+        await session.close()
+
+
 async def test_reset_replaces_only_one_document_session(tmp_path):
     sessions = Sessions()
     try:

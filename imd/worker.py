@@ -3,13 +3,14 @@
 import fcntl
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
 import termios
 import traceback
 
-from imd.agents import AgentCommands
+from imd.agents import AgentCommands, AgentError
 
 
 def main():
@@ -50,25 +51,33 @@ def main():
         control.write(json.dumps(message) + "\n")
         control.flush()
 
+    # An interrupt outside user code would end the worker and its session.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     send({"type": "ready", "cwd": os.getcwd()})
     while True:
-        try:
-            line = control.readline()
-        except KeyboardInterrupt:
-            continue
+        line = control.readline()
         if not line:
             break
         message = json.loads(line)
         status = "ok"
         command_error["printed"] = False
         try:
-            if not agent.execute(
-                message["code"], message.get("language", "xonsh"), XSH.subproc_uncaptured
-            ):
-                XSH.execer.exec(message["code"] + "\n", glbs=XSH.ctx, locs=XSH.ctx, filename="<imd>")
+            try:
+                signal.signal(signal.SIGINT, signal.default_int_handler)
+                if not agent.execute(
+                    message["code"], message.get("language", "xonsh"), XSH.subproc_uncaptured
+                ):
+                    XSH.execer.exec(
+                        message["code"] + "\n", glbs=XSH.ctx, locs=XSH.ctx, filename="<imd>"
+                    )
+            finally:
+                signal.signal(signal.SIGINT, signal.SIG_IGN)
         except KeyboardInterrupt:
             status = "interrupted"
             print("\nRun interrupted.", flush=True)
+        except AgentError as error:
+            status = "error"
+            print(error, flush=True)
         except subprocess.CalledProcessError as error:
             status = "error"
             if not command_error["printed"]:

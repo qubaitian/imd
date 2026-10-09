@@ -43,7 +43,7 @@ with TestClient(create_app(), base_url="http://localhost:8000") as client:
 '''
     result = subprocess.run(
         ["uv", "run", "--isolated", "--no-project", "--python", sys.executable,
-         "--with", str(wheel), "--with", "httpx", "python", "-c", script],
+         "--with", str(wheel), "--with", "httpx2", "python", "-c", script],
         cwd=tmp_path, capture_output=True, text=True, check=False, timeout=60,
     )
     assert result.returncode == 0, result.stdout + result.stderr

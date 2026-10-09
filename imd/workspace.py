@@ -22,6 +22,8 @@ class Workspace:
         path = (self.root / relative).resolve()
         if not path.is_relative_to(self.root):
             raise ValueError("The document must be inside the workspace.")
+        if path.suffix.lower() != ".md":
+            raise ValueError("Use a relative Markdown path.")
         return path
 
     def list(self) -> list[str]:

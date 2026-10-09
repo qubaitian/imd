@@ -11,8 +11,8 @@ describe('code block editing', () => {
   });
 
   it('includes arbitrary labels and disables editing during active runs', () => {
-    const source = '```js\nexample\n```\n```py\nrun\n```';
-    const rendered = renderMarkdown(source, { 0: { status: 'running' } });
+    const source = '```js\nexample\n```\n<!-- abc123 -->\n```txt\n```\n```py\nrun\n```';
+    const rendered = renderMarkdown(source, { abc123: { status: 'running' } });
     expect(rendered.editableBlocks.map(({ editable }) => editable)).toEqual([false, true]);
     expect(rendered.html).toContain('data-code-slot="0"');
     expect(rendered.html).toContain('data-code-slot="1"');

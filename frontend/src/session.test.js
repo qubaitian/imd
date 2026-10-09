@@ -73,6 +73,30 @@ it('does not reconnect a document that was closed during service downtime', () =
   expect(sockets).toHaveLength(1);
 });
 
+it('connects to the new session after a reset', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ type: 'snapshot' }) })));
+  session = new DocumentSession('imd.md', vi.fn(), vi.fn());
+  sockets[0].message({ type: 'snapshot', state: 'ready', cwd: '/notes', runs: [] });
+  const reset = session.reset();
+  sockets[0].message({ type: 'closed', reason: 'The session was reset or stopped.' });
+  await reset;
+  sockets[0].onclose({ code: 1012 });
+  expect(sockets).toHaveLength(2);
+  expect(sockets[1].url).toBe(sockets[0].url);
+  sockets[1].message({ type: 'snapshot', state: 'ready', cwd: '/notes', runs: [] });
+  expect(session.connected).toBe(true);
+  expect(session.state).toBe('ready');
+});
+
+it('stays disconnected after a failed reset', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, json: async () => ({ detail: 'failed' }) })));
+  const onError = vi.fn();
+  session = new DocumentSession('imd.md', vi.fn(), onError);
+  await session.reset();
+  expect(sockets).toHaveLength(1);
+  expect(onError).toHaveBeenCalledWith('failed');
+});
+
 it('does not retry an unavailable document and shows the service reason', () => {
   const onError = vi.fn();
   session = new DocumentSession('interaction.md', vi.fn(), onError);

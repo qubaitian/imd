@@ -24,6 +24,35 @@ def test_document_api_and_origin_checks(tmp_path):
         )
 
 
+def test_save_does_not_start_a_session(tmp_path, monkeypatch):
+    from imd.sessions import Session
+
+    async def fail_to_start(cls, cwd):
+        raise RuntimeError("The session process ended.")
+
+    monkeypatch.setattr(Session, "open", classmethod(fail_to_start))
+    (tmp_path / "guide.md").write_text("# Guide\n")
+    with TestClient(create_app(tmp_path), base_url="http://127.0.0.1") as client:
+        document = client.get("/api/document", params={"path": "guide.md"}).json()
+        response = client.put("/api/document", json={**document, "content": "# Saved\n"})
+        assert response.status_code == 200
+        assert (tmp_path / "guide.md").read_text() == "# Saved\n"
+
+
+def test_save_notifies_an_open_session(tmp_path):
+    (tmp_path / "guide.md").write_text("# Guide\n")
+    with (
+        TestClient(create_app(tmp_path), base_url="http://127.0.0.1") as client,
+        client.websocket_connect(
+            "ws://127.0.0.1/api/session?path=guide.md", headers={"origin": "http://127.0.0.1"}
+        ) as socket,
+    ):
+        socket.receive_json()
+        document = client.get("/api/document", params={"path": "guide.md"}).json()
+        client.put("/api/document", json={**document, "content": "# Saved\n"})
+        assert receive_until(socket, "document")[-1]["document"]["content"] == "# Saved\n"
+
+
 def receive_until(socket, kind):
     messages = []
     while True:

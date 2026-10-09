@@ -1,6 +1,6 @@
 import { analyzeDocument } from './document.js';
 
-export function renderMarkdown(content, statuses = {}, connected = true) {
+export function renderMarkdown(content, runs = {}, connected = true) {
   const { markdown, tokens, blocks, markers, outputs } = analyzeDocument(content);
   const escape = markdown.utils.escapeHtml;
   const editableBlocks = [];
@@ -15,7 +15,7 @@ export function renderMarkdown(content, statuses = {}, connected = true) {
     }
     const block = blocks.findIndex((candidate) => candidate.token === token);
     if (block !== -1) {
-      const status = statuses[block]?.status ?? 'idle';
+      const status = (blocks[block].id && runs[blocks[block].id]?.status) || 'idle';
       editable = status !== 'queued' && status !== 'running';
       const label = { queued: 'Queued', running: 'Running', ok: 'Run again', error: 'Retry', interrupted: 'Run again' }[status] ?? 'Run';
       const disabled = !connected || status === 'queued' || status === 'running';

@@ -5,6 +5,10 @@ import shlex
 from collections.abc import Callable
 
 
+class AgentError(ValueError):
+    """Invalid agent configuration or prompt."""
+
+
 class AgentCommands:
     def __init__(self):
         self._commands: dict[str, list[str]] = {}
@@ -24,10 +28,13 @@ class AgentCommands:
             commands = {}
             stderr = self._stderr
             for line in lines:
-                words = shlex.split(line, comments=True)
+                try:
+                    words = shlex.split(line, comments=True)
+                except ValueError as error:
+                    raise AgentError(f"Cannot read agent configuration: {error}.") from None
                 if words[:4] == ["imd", "set", "agent", "stderr"]:
                     if len(words) > 5 or (len(words) == 5 and not words[4]):
-                        raise ValueError("Use imd set agent stderr [PATH].")
+                        raise AgentError("Use imd set agent stderr [PATH].")
                     stderr = words[4] if len(words) == 5 else None
                     continue
                 if (
@@ -36,7 +43,7 @@ class AgentCommands:
                     or words[3] not in {"first", "continue"}
                     or not words[4]
                 ):
-                    raise ValueError(
+                    raise AgentError(
                         "Use imd set agent first PROGRAM [ARGUMENTS] or "
                         "imd set agent continue PROGRAM [ARGUMENTS] or "
                         "imd set agent stderr [PATH]."
@@ -51,9 +58,9 @@ class AgentCommands:
         if language != "agent":
             return False
         if set(self._commands) != {"first", "continue"}:
-            raise ValueError("Configure both first and continue agent commands before a prompt.")
+            raise AgentError("Configure both first and continue agent commands before a prompt.")
         if not code.strip():
-            raise ValueError("The prompt is empty.")
+            raise AgentError("The prompt is empty.")
         command = self._commands["continue" if self._started else "first"]
         arguments: list[str | tuple[str, str]] = [*command, code]
         if self._stderr is not None:

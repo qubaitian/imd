@@ -8,7 +8,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
-import httpx
+import httpx2 as httpx
 import pytest
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect

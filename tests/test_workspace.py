@@ -32,6 +32,15 @@ def test_rejects_paths_outside_the_workspace_and_non_markdown(tmp_path):
     assert workspace.list() == []
 
 
+def test_rejects_markdown_links_to_other_files(tmp_path):
+    (tmp_path / ".env").write_text("SECRET=1\n")
+    (tmp_path / "secret.md").symlink_to(tmp_path / ".env")
+    workspace = Workspace(tmp_path)
+    with pytest.raises(ValueError):
+        workspace.read("secret.md")
+    assert workspace.list() == []
+
+
 def test_overlapping_saves_keep_one_writers_content(tmp_path, monkeypatch):
     file = tmp_path / "guide.md"
     file.write_text("base\n")

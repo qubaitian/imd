@@ -16,9 +16,10 @@ export class DocumentSession {
   connect() {
     if (this.disposed) return;
     this.state = 'connecting';
-    this.socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${workspaceUrl(`/api/session?path=${encodeURIComponent(this.path)}`)}`);
-    this.socket.onmessage = ({ data }) => {
-      if (this.disposed) return;
+    const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${workspaceUrl(`/api/session?path=${encodeURIComponent(this.path)}`)}`);
+    this.socket = socket;
+    socket.onmessage = ({ data }) => {
+      if (this.disposed || this.socket !== socket) return;
       const event = JSON.parse(data);
       if (event.type === 'snapshot') {
         this.connected = true;
@@ -47,8 +48,8 @@ export class DocumentSession {
         this.state = 'closed';
       }
     };
-    this.socket.onclose = ({ code, reason }) => {
-      if (this.disposed) return;
+    socket.onclose = ({ code, reason }) => {
+      if (this.disposed || this.socket !== socket) return;
       this.connected = false;
       this.state = 'disconnected';
       if (code === 1008) this.onError(reason || 'Cannot connect to this document session.');
@@ -84,6 +85,8 @@ export class DocumentSession {
       const response = await fetch(workspaceUrl(`/api/session/reset?path=${encodeURIComponent(this.path)}`), { method: 'POST' });
       await readResponse(response);
       this.runs = {};
+      this.socket?.close();
+      this.connect();
     } catch (failure) {
       this.onError(failure.message);
     }

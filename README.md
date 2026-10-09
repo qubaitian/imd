@@ -55,6 +55,7 @@ The IMD service runs in the background after the command ends.
 A browser page opens one session connection for each document it opens.  
 A failed or closed session connection stays disconnected.  
 The user refreshes the browser page to connect again.  
+Reset session connects the page to the new session.  
 A missing document shows a reason in the browser.  
 The command does not open a new browser tab.  
 Restarting the service ends all sessions and clears their state.  
@@ -244,6 +245,7 @@ Open `imd.md` instead of a previously selected document because the directory UR
 Create the file only if it is missing so opening a URL preserves existing notes.  
 Pass the workspace with each API request and session connection so browser tabs use their own directories.  
 Keep document access inside its workspace and keep browser connections on the same local origin.  
+Check the Markdown suffix after resolving links so a `.md` link cannot expose another file type.  
 
 ### Frontend in the installation package
 
@@ -302,6 +304,10 @@ Use a separate control channel for run completion because command output can con
 Start the worker with the same package directory as the IMD service instead of relying on Python's script import path.  
 A service started from the repository can otherwise mix new worker code with an older installed package.  
 Keep each session in a separate process because xonsh has process-wide state.  
+Ignore interruption in the worker outside a run's code.  
+An interruption that arrives as a run ends would otherwise end the session.  
+Keep the next run waiting until the worker reports the current run, even if its caller stops waiting.  
+Publish saved documents only to an existing session instead of starting one for each save.  
 Bind the service to the loopback interface and require a same-origin browser connection.  
 Accept a same-origin connection before closing it for an unavailable document.  
 Use WebSocket close code 1008 with a reason instead of rejecting that document's handshake.  
@@ -314,6 +320,8 @@ Executable blocks have the same permissions as the local service.
 Use a browser page refresh to connect again instead of automatic retries, as requested.  
 Repeated rejected connections fill the service log without restoring the session connection.  
 Keep the page disconnected until the user refreshes it.  
+Connect once after a successful Reset session because the user asked for the new session.  
+A failed reset keeps the page disconnected.  
 
 ### Markdown preview
 
